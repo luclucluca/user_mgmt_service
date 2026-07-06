@@ -39,14 +39,14 @@ services:
     networks:
       - app_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${SPRING_DATASOURCE_USERNAME} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
 
   backend:
-    build: .
+    image: ${BACKEND_IMAGE}
     networks:
       - app_network
     depends_on:
