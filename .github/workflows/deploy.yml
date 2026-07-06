@@ -1,0 +1,72 @@
+name: Deploy to DigitalOcean        # Anzeigename in der GitHub Actions UI
+
+on:                                  # definiert wann die Pipeline läuft
+  push:                              # bei einem Push Event
+    branches:
+      - main                         # nur auf dem main Branch
+
+env:                                 # globale Umgebungsvariablen für alle Jobs
+  REGISTRY: ghcr.io                  # GitHub Container Registry URL
+  IMAGE_NAME: ${{ github.repository }} # wird automatisch zu owner/reponame
+
+jobs:
+
+  build-and-push:                    # Name des ersten Jobs
+    runs-on: ubuntu-latest           # läuft auf einer Ubuntu VM bei GitHub
+    permissions:
+      contents: read                 # darf den Code lesen
+      packages: write                # darf Images in GHCR pushen
+    steps:
+      - uses: actions/checkout@v4    # checkt den Code aus dem Repo aus
+
+      - name: Login to GHCR          # Schritt-Name in der UI
+        uses: docker/login-action@v3 # fertige Action zum Einloggen in eine Registry
+        with:
+          registry: ${{ env.REGISTRY }}      # ghcr.io
+          username: ${{ github.actor }}      # GitHub-Benutzername, automatisch gesetzt
+          password: ${{ secrets.GITHUB_TOKEN }} # Token, automatisch von GitHub bereitgestellt
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6   # fertige Action zum Bauen und Pushen
+        with:
+          context: .                 # Dockerfile liegt im Root-Verzeichnis
+          push: true                 # Image nach dem Bauen direkt pushen
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest  # ghcr.io/owner/repo:latest
+
+  deploy:                            # Name des zweiten Jobs
+    runs-on: ubuntu-latest
+    needs: build-and-push            # wartet bis Job 1 erfolgreich abgeschlossen ist
+    steps:
+      - uses: actions/checkout@v4    # braucht den Code wegen docker-compose.yaml
+
+      - name: Copy docker-compose to Droplet
+        uses: appleboy/scp-action@v0.1.7  # fertige Action zum Kopieren via SCP
+        with:
+          host: ${{ secrets.SSH_HOST }}        # IP des Droplets
+          username: ${{ secrets.SSH_USER }}    # SSH-Benutzer z.B. root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}  # privater SSH-Key
+          port: ${{ secrets.SSH_PORT }}        # SSH-Port, normalerweise 22
+          source: docker-compose.yaml          # was kopiert wird
+          target: ~/user_mgmt_service          # Zielordner auf dem Droplet
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1     # fertige Action für SSH-Befehle
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |                        # mehrere Befehle die auf dem Droplet laufen
+            cd ~/user_mgmt_service         # in den Projektordner wechseln
+            echo "BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" > .env   # .env neu erstellen
+            echo "SPRING_DATASOURCE_URL=${{ secrets.SPRING_DATASOURCE_URL }}" >> .env      # an .env anhängen
+            echo "SPRING_DATASOURCE_USERNAME=${{ secrets.SPRING_DATASOURCE_USERNAME }}" >> .env
+            echo "SPRING_DATASOURCE_PASSWORD=${{ secrets.SPRING_DATASOURCE_PASSWORD }}" >> .env
+            echo "SPRING_JPA_HIBERNATE_DDL_AUTO=${{ secrets.SPRING_JPA_HIBERNATE_DDL_AUTO }}" >> .env
+            echo "JWT_ISSUER=${{ secrets.JWT_ISSUER }}" >> .env
+            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+            echo "JWT_EXPIRATION_MILLIS=${{ secrets.JWT_EXPIRATION_MILLIS }}" >> .env
+            echo "ACME_EMAIL=${{ secrets.ACME_EMAIL }}" >> .env
+            echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}" >> .env
+            docker compose pull            # neues Image von GHCR herunterladen
+            docker compose up -d --remove-orphans  # Container starten, -d = im Hintergrund, --remove-orphans = alte nicht mehr verwendete Container entfernen
