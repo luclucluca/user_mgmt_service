@@ -60,6 +60,14 @@ services:
       JWT_ISSUER: ${JWT_ISSUER}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION_MILLIS: ${JWT_EXPIRATION_MILLIS}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`lucavonsaal.com`) || Host(`www.lucavonsaal.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.routers.backend.middlewares=strip-api"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
 
   frontend:
     image: ${FRONTEND_IMAGE}
@@ -67,8 +75,6 @@ services:
       - app_network
     depends_on:
       - backend
-    environment:
-      NEXT_PUBLIC_API_URL: blub
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.rule=Host(`lucavonsaal.com`) || Host(`www.lucavonsaal.com`)"
