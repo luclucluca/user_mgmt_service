@@ -68,7 +68,7 @@ services:
     depends_on:
       - backend
     environment:
-      NEXT_PUBLIC_API_URL: "http://localhost:8080"
+      NEXT_PUBLIC_API_URL: blub
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.rule=Host(`lucavonsaal.com`) || Host(`www.lucavonsaal.com`)"
