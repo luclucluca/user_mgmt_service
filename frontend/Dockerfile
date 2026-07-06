@@ -10,10 +10,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/package.json /app/package-lock.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/next.config.ts ./next.config.ts
 
 USER appuser
 EXPOSE 3000
-ENTRYPOINT ["node", "server.js"]
+ENTRYPOINT ["npm", "start"]
