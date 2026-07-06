@@ -52,15 +52,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=Host(`lucavonsaal.com`, `www.lucavonsaal.com`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.backend.entrypoints=websecure"
-      - "traefik.http.routers.backend.tls=true"
-      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.backend.middlewares=strip-api"
-      - "traefik.http.middlewares.strip-api.stripprefix.prefixes=/api"
-      - "traefik.http.services.backend.loadbalancer.server.port=8080"
     environment:
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
@@ -69,6 +60,22 @@ services:
       JWT_ISSUER: ${JWT_ISSUER}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION_MILLIS: ${JWT_EXPIRATION_MILLIS}
+
+  frontend:
+    image: ${FRONTEND_IMAGE}
+    networks:
+      - app_network
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:8080"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`lucavonsaal.com`, `www.lucavonsaal.com`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
 
 
 networks:
