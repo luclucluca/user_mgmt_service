@@ -23,6 +23,8 @@ jobs:
             context: ./backend
           - service: frontend
             context: ./frontend
+            build_args: |
+              NEXT_PUBLIC_API_URL=https://www.lucavonsaal.com/api
     steps:
       - uses: actions/checkout@v4
 
@@ -39,6 +41,7 @@ jobs:
           context: ${{ matrix.context }}
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}:latest
+          build-args: ${{ matrix.build_args }}
 
   deploy:
     runs-on: ubuntu-latest

@@ -62,12 +62,13 @@ services:
       JWT_EXPIRATION_MILLIS: ${JWT_EXPIRATION_MILLIS}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.frontend.rule=Host(`lucavonsaal.com`) || Host(`www.lucavonsaal.com`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.frontend.entrypoints=websecure"
-      - "traefik.http.routers.frontend.tls=true"
-      - "traefik.http.routers.backend.middlewares=strip-api"
-      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
+      - "traefik.http.routers.backend.rule=(Host(`lucavonsaal.com`) || Host(`www.lucavonsaal.com`)) && PathPrefix(`/api`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls=true"
+      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.backend.middlewares=api-strip"
+      - "traefik.http.middlewares.api-strip.stripprefix.prefixes=/api"
+      - "traefik.http.services.backend.loadbalancer.server.port=8080"
 
   frontend:
     image: ${FRONTEND_IMAGE}
