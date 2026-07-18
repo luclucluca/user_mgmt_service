@@ -62,7 +62,7 @@ services:
       JWT_EXPIRATION_MILLIS: ${JWT_EXPIRATION_MILLIS}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=(Host(`lucavonsaal.com`) || Host(`www.lucavonsaal.com`)) && PathPrefix(`/api`)"
+      - "traefik.http.routers.backend.rule=(Host(`lucavonsaal.com`) || Host(`www.lucavonsaal.com`)) && PathPrefix(`/api/users`)"
       - "traefik.http.routers.backend.entrypoints=websecure"
       - "traefik.http.routers.backend.tls=true"
       - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
