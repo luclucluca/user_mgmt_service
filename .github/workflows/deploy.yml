@@ -1,9 +1,10 @@
-name: Deploy to DigitalOcean
+name: Build and Push Images
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -21,10 +22,13 @@ jobs:
         include:
           - service: backend
             context: ./backend
+            build_args: ""
           - service: frontend
             context: ./frontend
+            # Next.js backt NEXT_PUBLIC_* zur Build-Zeit ins Bundle ein.
+            # Der Ingress routet /api auf das Spring-Boot-Backend.
             build_args: |
-              NEXT_PUBLIC_API_URL=https://www.lucavonsaal.com/api
+              NEXT_PUBLIC_API_URL=http://app.67.207.74.210.nip.io/api
     steps:
       - uses: actions/checkout@v4
 
@@ -40,46 +44,7 @@ jobs:
         with:
           context: ${{ matrix.context }}
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}:latest
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}:${{ github.sha }}
           build-args: ${{ matrix.build_args }}
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build-and-push
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Copy docker-compose to Droplet
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          port: ${{ secrets.SSH_PORT }}
-          source: docker-compose.yaml
-          target: ~/user_mgmt_service
-
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            cd ~/user_mgmt_service
-            echo "BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:latest" > .env
-            echo "FRONTEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest" >> .env
-            echo "SPRING_DATASOURCE_URL=${{ secrets.SPRING_DATASOURCE_URL }}" >> .env
-            echo "SPRING_DATASOURCE_USERNAME=${{ secrets.SPRING_DATASOURCE_USERNAME }}" >> .env
-            echo "SPRING_DATASOURCE_PASSWORD=${{ secrets.SPRING_DATASOURCE_PASSWORD }}" >> .env
-            echo "SPRING_JPA_HIBERNATE_DDL_AUTO=${{ secrets.SPRING_JPA_HIBERNATE_DDL_AUTO }}" >> .env
-            echo "JWT_ISSUER=${{ secrets.JWT_ISSUER }}" >> .env
-            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
-            echo "JWT_EXPIRATION_MILLIS=${{ secrets.JWT_EXPIRATION_MILLIS }}" >> .env
-            echo "ACME_EMAIL=${{ secrets.ACME_EMAIL }}" >> .env
-            echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}" >> .env
-            docker compose pull
-            docker compose up -d --remove-orphans  # Container starten, -d = im Hintergrund, --remove-orphans = alte nicht mehr verwendete Container entfernen
