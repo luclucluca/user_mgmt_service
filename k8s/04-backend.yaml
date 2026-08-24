@@ -31,7 +31,10 @@ spec:
     spec:
       containers:
         - name: backend
-          image: ghcr.io/luclucluca/user_mgmt_service-backend:k8s-1
+          image: ghcr.io/luclucluca/user_mgmt_service-backend:latest
+          # Always: die Pipeline ueberschreibt "latest" bei jedem Push auf main,
+          # ohne dies wuerde der Node das gecachte Image weiterverwenden.
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8080

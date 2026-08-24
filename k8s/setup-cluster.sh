@@ -121,10 +121,9 @@ fehlen. Naechste Schritte:
        git commit -m "k8s: ingress host ${HOST}"
        git push
 
-  3. Nach dem Actions-Run die Deployments auf den gebauten Tag setzen:
-       SHA=\$(git rev-parse HEAD)
-       kubectl set image deployment/backend  backend=ghcr.io/luclucluca/user_mgmt_service-backend:\$SHA  -n ${NAMESPACE}
-       kubectl set image deployment/frontend frontend=ghcr.io/luclucluca/user_mgmt_service-frontend:\$SHA -n ${NAMESPACE}
+  3. Nach dem Actions-Run die Pods auf das neue 'latest' ziehen lassen:
+       kubectl rollout restart deployment/backend deployment/frontend -n ${NAMESPACE}
+       kubectl rollout status  deployment/backend deployment/frontend -n ${NAMESPACE}
 
   4. Testen:
        curl -s -o /dev/null -w "%{http_code}\\n" http://${HOST}/

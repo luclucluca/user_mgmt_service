@@ -10,7 +10,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: app.67.207.74.210.nip.io
+    - host: app.129.212.140.90.nip.io
       http:
         paths:
           # Backend zuerst: spezifischere Regel gewinnt.
