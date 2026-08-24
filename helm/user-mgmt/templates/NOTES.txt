@@ -1,0 +1,30 @@
+{{ .Chart.Name }} {{ .Chart.Version }} als Release "{{ .Release.Name }}" in Namespace "{{ .Release.Namespace }}" installiert.
+
+Komponenten:
+  Frontend  {{ include "user-mgmt.image" (dict "ctx" $ "image" .Values.frontend.image) }}  ({{ .Values.frontend.replicaCount }} Replica)
+  Backend   {{ include "user-mgmt.image" (dict "ctx" $ "image" .Values.backend.image) }}  ({{ .Values.backend.replicaCount }} Replica)
+  Datenbank {{ include "user-mgmt.image" (dict "ctx" $ "image" .Values.postgres.image) }}
+  JDBC-URL  {{ include "user-mgmt.datasourceUrl" . }}
+
+{{- if .Values.ingress.enabled }}
+
+Erreichbar unter:
+{{- range .Values.ingress.hosts }}
+  {{ if $.Values.ingress.tls.enabled }}https{{ else }}http{{ end }}://{{ . }}
+{{- end }}
+{{- end }}
+
+Status pruefen:
+  kubectl get pods,svc,pvc,ingress -n {{ .Release.Namespace }}
+
+{{- if or (eq .Values.secrets.datasourcePassword "CHANGEME") (eq .Values.secrets.jwtSecret "CHANGEME") }}
+
+WARNUNG
+  Es sind noch Platzhalter-Secrets aktiv. Das Backend wird so nicht korrekt
+  starten. Echte Werte mitgeben:
+
+    helm upgrade --install {{ .Release.Name }} ./helm/user-mgmt \
+      --namespace {{ .Release.Namespace }} \
+      --set secrets.datasourcePassword='<passwort>' \
+      --set secrets.jwtSecret='<base64-schluessel>'
+{{- end }}

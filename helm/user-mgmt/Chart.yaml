@@ -1,0 +1,19 @@
+apiVersion: v2
+name: user-mgmt
+description: |
+  User Management Service - Next.js Frontend, Spring Boot Backend und
+  PostgreSQL mit persistenter Speicherung.
+type: application
+
+# Version des Charts selbst. Wird bei Aenderungen an den Templates erhoeht.
+version: 0.1.0
+
+# Version der Applikation. Dient nur der Anzeige (app.kubernetes.io/version);
+# die tatsaechlich deployten Image-Tags stehen in values.yaml.
+appVersion: "0.0.1"
+
+keywords:
+  - user-management
+  - spring-boot
+  - nextjs
+  - postgresql

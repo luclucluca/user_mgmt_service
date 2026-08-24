@@ -1,0 +1,88 @@
+{{- $name := include "user-mgmt.componentName" (dict "ctx" $ "component" "postgres") -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "user-mgmt.componentLabels" (dict "ctx" $ "component" "postgres") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "user-mgmt.componentSelectorLabels" (dict "ctx" $ "component" "postgres") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: {{ .Values.postgres.service.port }}
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "user-mgmt.componentLabels" (dict "ctx" $ "component" "postgres") | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "user-mgmt.componentSelectorLabels" (dict "ctx" $ "component" "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "user-mgmt.componentSelectorLabels" (dict "ctx" $ "component" "postgres") | nindent 8 }}
+    spec:
+      containers:
+        - name: postgres
+          image: {{ include "user-mgmt.image" (dict "ctx" $ "image" .Values.postgres.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: postgres
+              containerPort: {{ .Values.postgres.service.port }}
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "user-mgmt.secretName" . }}
+                  key: SPRING_DATASOURCE_USERNAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "user-mgmt.secretName" . }}
+                  key: SPRING_DATASOURCE_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "user-mgmt.configMapName" . }}
+                  key: POSTGRES_DB
+            - name: PGDATA
+              value: {{ .Values.postgres.pgData | quote }}
+          {{- if .Values.postgres.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.postgres.persistence.mountPath }}
+          {{- end }}
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+            initialDelaySeconds: {{ .Values.postgres.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.postgres.probes.readiness.periodSeconds }}
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+            initialDelaySeconds: {{ .Values.postgres.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.postgres.probes.liveness.periodSeconds }}
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+  {{- if .Values.postgres.persistence.enabled }}
+  # Erzeugt den PersistentVolumeClaim fuer die Datenbank.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - {{ .Values.postgres.persistence.accessMode }}
+        storageClassName: {{ .Values.postgres.persistence.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.persistence.size }}
+  {{- end }}

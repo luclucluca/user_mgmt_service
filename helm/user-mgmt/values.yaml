@@ -1,0 +1,146 @@
+# Zentrale Konfiguration des Charts. Kein Wert darf in den Templates
+# hartcodiert sein - alles Umgebungsabhaengige gehoert hierher.
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Registry-Defaults. Einzelne Komponenten koennen "registry" und "repository"
+# ueberschreiben (siehe postgres), "name" und "tag" stehen immer pro Komponente.
+image:
+  registry: ghcr.io
+  repository: luclucluca
+  pullPolicy: Always
+
+# ---------------------------------------------------------------------------
+# Backend (Spring Boot)
+# ---------------------------------------------------------------------------
+backend:
+  replicaCount: 1
+  image:
+    name: user_mgmt_service-backend
+    tag: latest
+  service:
+    port: 8080
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  # Spring Boot bringt keinen Actuator mit, daher TCP-Probes.
+  probes:
+    startup:
+      periodSeconds: 5
+      failureThreshold: 30
+    readiness:
+      periodSeconds: 10
+    liveness:
+      periodSeconds: 20
+
+# ---------------------------------------------------------------------------
+# Frontend (Next.js)
+# ---------------------------------------------------------------------------
+# Hinweis: NEXT_PUBLIC_API_URL wird von Next.js zur Build-Zeit ins Bundle
+# eingebacken (siehe frontend/Dockerfile) und laesst sich hier nicht setzen.
+frontend:
+  replicaCount: 1
+  image:
+    name: user_mgmt_service-frontend
+    tag: latest
+  service:
+    port: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  probes:
+    startup:
+      periodSeconds: 5
+      failureThreshold: 24
+    readiness:
+      periodSeconds: 10
+    liveness:
+      periodSeconds: 20
+
+# ---------------------------------------------------------------------------
+# PostgreSQL
+# ---------------------------------------------------------------------------
+postgres:
+  image:
+    registry: docker.io
+    repository: library
+    name: postgres
+    tag: "16-alpine"
+  service:
+    port: 5432
+  # Unterverzeichnis, damit "lost+found" des ext4-Volumes initdb nicht blockiert.
+  pgData: /var/lib/postgresql/data/pgdata
+  persistence:
+    enabled: true
+    storageClass: do-block-storage
+    accessMode: ReadWriteOnce
+    size: 1Gi
+    mountPath: /var/lib/postgresql/data
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  probes:
+    readiness:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    liveness:
+      initialDelaySeconds: 30
+      periodSeconds: 20
+
+# ---------------------------------------------------------------------------
+# Nicht sensitive Konfiguration -> ConfigMap
+# ---------------------------------------------------------------------------
+config:
+  postgresDb: postgres
+  # "update" statt "create": das PVC ist persistent, das Schema darf beim
+  # Pod-Restart nicht neu erzeugt (und damit geleert) werden.
+  ddlAuto: update
+  jwtIssuer: Spring
+  jwtExpirationMillis: "86400000"
+
+# ---------------------------------------------------------------------------
+# Sensitive Konfiguration -> Secret
+# ---------------------------------------------------------------------------
+# Bewusst nur Platzhalter. Die echten Werte kommen beim Deployment dazu:
+#   helm upgrade --install user-mgmt ./helm/user-mgmt \
+#     --set secrets.datasourcePassword='...' --set secrets.jwtSecret='...'
+# oder ueber eine nicht eingecheckte values-secret.yaml (-f).
+secrets:
+  datasourceUsername: postgres
+  datasourcePassword: CHANGEME
+  jwtSecret: CHANGEME
+
+# ---------------------------------------------------------------------------
+# Ingress
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - lucavonsaal.com
+    - www.lucavonsaal.com
+  api:
+    # Nur /api/users, nicht /api: das Frontend hat eigene Next.js Route Handler
+    # unter /api/login, /api/me und /api/logout. Eine Regel auf /api wuerde die
+    # ans Backend schicken, das nur /users/** kennt.
+    path: /api/users(/|$)(.*)
+    rewriteTarget: /users$1$2
+  tls:
+    enabled: true
+    secretName: user-mgmt-tls
+    # Der ClusterIssuer selbst ist clusterweite Infrastruktur und wird nicht vom
+    # Chart verwaltet, sondern von k8s/setup-cluster.sh angelegt.
+    clusterIssuer: letsencrypt-prod

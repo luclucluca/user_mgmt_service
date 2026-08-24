@@ -1,0 +1,85 @@
+{{- if .Values.ingress.enabled -}}
+{{- $frontendSvc := include "user-mgmt.componentName" (dict "ctx" $ "component" "frontend") -}}
+{{- $backendSvc := include "user-mgmt.componentName" (dict "ctx" $ "component" "backend") -}}
+{{/*
+Bewusst zwei Ingress-Objekte: "rewrite-target" ist eine Annotation auf
+Ingress-Ebene und gilt damit fuer jede Pfad-Regel des Objekts. Laegen beide
+Regeln zusammen, haette die Regel "/" keine Capture-Group, $2 waere leer und
+jede Frontend-URL wuerde auf "/" umgeschrieben.
+
+Die cert-manager-Annotation steht nur am Web-Objekt. Zwei Objekte mit derselben
+Annotation und demselben secretName wuerden zwei konkurrierende
+Certificate-Ressourcen auf dasselbe Secret erzeugen; das API-Objekt
+referenziert das Secret nur.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "user-mgmt.fullname" . }}-web
+  labels:
+    {{- include "user-mgmt.labels" . | nindent 4 }}
+  {{- if .Values.ingress.tls.enabled }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.clusterIssuer | quote }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  # Sobald "tls" gesetzt ist, leitet ingress-nginx HTTP per 308 auf HTTPS um.
+  tls:
+    - hosts:
+        {{- range .Values.ingress.hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .Values.ingress.tls.secretName | quote }}
+  {{- end }}
+  rules:
+    {{- range $host := .Values.ingress.hosts }}
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $frontendSvc }}
+                port:
+                  number: {{ $.Values.frontend.service.port }}
+    {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "user-mgmt.fullname" . }}-api
+  labels:
+    {{- include "user-mgmt.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    # Entspricht dem frueheren Traefik "stripprefix": /api/users -> /users
+    nginx.ingress.kubernetes.io/rewrite-target: {{ .Values.ingress.api.rewriteTarget | quote }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        {{- range .Values.ingress.hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .Values.ingress.tls.secretName | quote }}
+  {{- end }}
+  rules:
+    {{- range $host := .Values.ingress.hosts }}
+    # nginx bevorzugt die Regex-Location gegenueber der Prefix-Location "/",
+    # damit gewinnt /api/users ohne weitere Priorisierung.
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: {{ $.Values.ingress.api.path | quote }}
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ $backendSvc }}
+                port:
+                  number: {{ $.Values.backend.service.port }}
+    {{- end }}
+{{- end }}

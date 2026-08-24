@@ -1,0 +1,8 @@
+.DS_Store
+.git/
+.gitignore
+*.tmp
+*.bak
+*.swp
+# Nicht eingecheckte Werte mit echten Secrets
+values-secret.yaml

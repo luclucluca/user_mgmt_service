@@ -1,0 +1,56 @@
+{{- $name := include "user-mgmt.componentName" (dict "ctx" $ "component" "frontend") -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "user-mgmt.componentLabels" (dict "ctx" $ "component" "frontend") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "user-mgmt.componentSelectorLabels" (dict "ctx" $ "component" "frontend") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.frontend.service.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "user-mgmt.componentLabels" (dict "ctx" $ "component" "frontend") | nindent 4 }}
+spec:
+  replicas: {{ .Values.frontend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "user-mgmt.componentSelectorLabels" (dict "ctx" $ "component" "frontend") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "user-mgmt.componentSelectorLabels" (dict "ctx" $ "component" "frontend") | nindent 8 }}
+    spec:
+      containers:
+        - name: frontend
+          image: {{ include "user-mgmt.image" (dict "ctx" $ "image" .Values.frontend.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.frontend.service.port }}
+          # Hinweis: NEXT_PUBLIC_API_URL wird von Next.js zur Build-Zeit ins
+          # Bundle eingebacken und laesst sich hier zur Laufzeit nicht aendern.
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: {{ .Values.frontend.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.frontend.probes.startup.failureThreshold }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: {{ .Values.frontend.probes.readiness.periodSeconds }}
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: {{ .Values.frontend.probes.liveness.periodSeconds }}
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
