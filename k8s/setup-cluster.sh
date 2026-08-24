@@ -14,6 +14,9 @@ REGION="${REGION:-fra1}"
 NODE_SIZE="${NODE_SIZE:-s-2vcpu-4gb}"
 NODE_COUNT="${NODE_COUNT:-1}"
 NAMESPACE="user-mgmt"
+# Muessen mit den Hosts in 06-ingress.yaml und dem Build-Arg in deploy.yml
+# uebereinstimmen.
+HOSTS=("lucavonsaal.com" "www.lucavonsaal.com")
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 K8S_DIR="${REPO_ROOT}/k8s"
@@ -26,11 +29,11 @@ ok()    { printf '\033[1;32m✓   %s\033[0m\n' "$*"; }
 # ---------------------------------------------------------------------------
 info "Voraussetzungen pruefen"
 # ---------------------------------------------------------------------------
-for bin in doctl kubectl helm; do
+for bin in doctl kubectl helm dig; do
   command -v "$bin" >/dev/null || { echo "FEHLER: $bin nicht gefunden"; exit 1; }
 done
 doctl account get >/dev/null || { echo "FEHLER: doctl nicht authentifiziert"; exit 1; }
-ok "doctl, kubectl, helm vorhanden"
+ok "doctl, kubectl, helm, dig vorhanden"
 
 # ---------------------------------------------------------------------------
 info "Cluster '${CLUSTER_NAME}' bereitstellen"
@@ -65,6 +68,20 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
 ok "ingress-nginx installiert"
 
 # ---------------------------------------------------------------------------
+info "cert-manager installieren"
+# ---------------------------------------------------------------------------
+# Muss vor dem Apply der Manifests laufen: 07-tls-issuer.yaml enthaelt einen
+# ClusterIssuer, dessen CRD erst von cert-manager mitgebracht wird. Ohne diesen
+# Schritt bricht "kubectl apply -f k8s/" mit "no matches for kind" ab.
+helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
+helm repo update jetstack >/dev/null
+helm upgrade --install cert-manager jetstack/cert-manager \
+  --namespace cert-manager --create-namespace \
+  --set crds.enabled=true \
+  --wait --timeout 10m >/dev/null
+ok "cert-manager installiert"
+
+# ---------------------------------------------------------------------------
 info "Auf LoadBalancer-IP warten (DigitalOcean provisioniert, ca. 2-5 Min)"
 # ---------------------------------------------------------------------------
 LB_IP=""
@@ -76,25 +93,51 @@ for _ in $(seq 1 60); do
 done
 [ -n "${LB_IP}" ] || { echo "FEHLER: keine LoadBalancer-IP erhalten"; exit 1; }
 
-HOST="app.${LB_IP}.nip.io"
-API_URL="http://${HOST}/api"
 ok "LoadBalancer-IP: ${LB_IP}"
-ok "Host: ${HOST}"
 
 # ---------------------------------------------------------------------------
-info "Host in die Manifests und die Pipeline schreiben"
+info "DNS pruefen"
 # ---------------------------------------------------------------------------
-# Next.js backt NEXT_PUBLIC_API_URL zur Build-Zeit ein. Der Host muss deshalb an
-# zwei Stellen konsistent gehalten werden: im Ingress und im Build-Arg.
-sed -i.bak "s|^\( *\)host: .*|\1host: ${HOST}|" "${K8S_DIR}/06-ingress.yaml"
-sed -i.bak "s|NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=${API_URL}|" "${WORKFLOW}"
-rm -f "${K8S_DIR}/06-ingress.yaml.bak" "${WORKFLOW}.bak"
-ok "06-ingress.yaml und deploy.yml aktualisiert"
+# Der Host ist seit der TLS-Umstellung fest in 06-ingress.yaml und deploy.yml
+# verdrahtet, es wird nichts mehr per sed nachgezogen. Die A-Records liegen bei
+# einem externen Registrar (nicht in der DigitalOcean-DNS-Zone) und muessen
+# nach einem Cluster-Neuaufbau manuell auf die neue IP gezeigt werden.
+# Ohne korrektes DNS scheitert die HTTP-01-Challenge von Let's Encrypt.
+DNS_OK=1
+for host in "${HOSTS[@]}"; do
+  resolved=$(dig +short A "${host}" | tail -1)
+  if [ "${resolved}" = "${LB_IP}" ]; then
+    ok "${host} -> ${resolved}"
+  else
+    warn "${host} -> ${resolved:-<keine Antwort>} (erwartet ${LB_IP})"
+    DNS_OK=0
+  fi
+done
+if [ "${DNS_OK}" -eq 0 ]; then
+  warn "A-Records auf ${LB_IP} zeigen lassen, sonst bleibt das Zertifikat aus."
+  warn "Die Anwendung laeuft trotzdem an, nur ohne gueltiges TLS."
+fi
 
 # ---------------------------------------------------------------------------
 info "Manifests ausrollen"
 # ---------------------------------------------------------------------------
-kubectl apply -f "${K8S_DIR}"
+# 00 bis 06 direkt. 07 wird separat behandelt, weil dort die ACME-Adresse
+# eingesetzt werden muss, die absichtlich nicht im Manifest steht.
+for manifest in "${K8S_DIR}"/0[0-6]-*.yaml; do
+  kubectl apply -f "${manifest}"
+done
+
+ACME_EMAIL=$(grep -E '^ACME_EMAIL=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- || true)
+if [ -n "${ACME_EMAIL}" ]; then
+  # Ueber stdin, damit die Adresse nicht in die versionierte Datei geschrieben wird.
+  sed "s|PLACEHOLDER_ACME_EMAIL|${ACME_EMAIL}|" "${K8S_DIR}/07-tls-issuer.yaml" \
+    | kubectl apply -f -
+  ok "ClusterIssuer mit ACME_EMAIL aus .env angewendet"
+else
+  warn "ACME_EMAIL fehlt in .env — ClusterIssuer uebersprungen, es gibt kein TLS."
+  warn "Nachtragen und dann: sed \"s|PLACEHOLDER_ACME_EMAIL|<adresse>|\" \\"
+  warn "  ${K8S_DIR}/07-tls-issuer.yaml | kubectl apply -f -"
+fi
 
 info "Auf PostgreSQL warten"
 kubectl wait --for=condition=Ready pod/postgres-0 -n "${NAMESPACE}" --timeout=300s
@@ -107,26 +150,35 @@ kubectl get pods,svc,pvc,ingress -n "${NAMESPACE}"
 cat <<EOF
 
 ────────────────────────────────────────────────────────────────────
-Infrastruktur steht. Host: http://${HOST}
+Infrastruktur steht. LoadBalancer-IP: ${LB_IP}
+Hosts: ${HOSTS[*]}
 
 Backend und Frontend stehen auf ErrImagePull, solange die Images
 fehlen. Naechste Schritte:
 
-  1. GHCR-Packages auf 'public' stellen (GitHub -> Packages ->
+  1. Falls die DNS-Pruefung oben gewarnt hat: A-Records der Hosts auf
+     ${LB_IP} zeigen lassen und warten, bis sie aufloesen. Ohne DNS
+     stellt Let's Encrypt kein Zertifikat aus.
+
+  2. Falls oben gewarnt wurde, dass ACME_EMAIL fehlt: in .env
+     nachtragen und den Issuer anwenden (die Adresse wird bewusst
+     nicht in das versionierte Manifest geschrieben):
+       sed "s|PLACEHOLDER_ACME_EMAIL|<adresse>|" \\
+         ${K8S_DIR}/07-tls-issuer.yaml | kubectl apply -f -
+
+  3. GHCR-Packages auf 'public' stellen (GitHub -> Packages ->
      Package settings -> Change visibility), sonst wird zusaetzlich
      ein imagePullSecret benoetigt.
 
-  2. Pipeline-Aenderung committen und pushen:
-       git add .github/workflows/deploy.yml k8s/
-       git commit -m "k8s: ingress host ${HOST}"
-       git push
-
-  3. Nach dem Actions-Run die Pods auf das neue 'latest' ziehen lassen:
+  4. Nach dem Actions-Run die Pods auf das neue 'latest' ziehen lassen:
        kubectl rollout restart deployment/backend deployment/frontend -n ${NAMESPACE}
        kubectl rollout status  deployment/backend deployment/frontend -n ${NAMESPACE}
 
-  4. Testen:
-       curl -s -o /dev/null -w "%{http_code}\\n" http://${HOST}/
+  5. Zertifikat pruefen (READY muss True werden, dauert 1-2 Min):
+       kubectl get certificate -n ${NAMESPACE} -w
+
+  6. Testen:
+       curl -s -o /dev/null -w "%{http_code}\\n" https://${HOSTS[0]}/
 
 Cluster wieder abbauen (stoppt die Kosten):
        ./k8s/teardown-cluster.sh

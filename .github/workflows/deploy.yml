@@ -28,7 +28,7 @@ jobs:
             # Next.js backt NEXT_PUBLIC_* zur Build-Zeit ins Bundle ein.
             # Der Ingress routet /api auf das Spring-Boot-Backend.
             build_args: |
-              NEXT_PUBLIC_API_URL=http://app.129.212.140.90.nip.io/api
+              NEXT_PUBLIC_API_URL=https://lucavonsaal.com/api
     steps:
       - uses: actions/checkout@v4
 
