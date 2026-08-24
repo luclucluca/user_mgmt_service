@@ -105,6 +105,14 @@ abweichendem Release-Namen korrekt bleibt.
 {{- printf "%s-config" (include "user-mgmt.fullname" .) }}
 {{- end }}
 
+{{/*
+Name des Secrets. Wird es nicht vom Chart erzeugt (secrets.create=false), kann
+ueber secrets.existingSecret ein abweichender Name angegeben werden.
+*/}}
 {{- define "user-mgmt.secretName" -}}
-{{- printf "%s-secret" (include "user-mgmt.fullname" .) }}
+{{- if .Values.secrets.existingSecret -}}
+{{- .Values.secrets.existingSecret -}}
+{{- else -}}
+{{- printf "%s-secret" (include "user-mgmt.fullname" .) -}}
+{{- end -}}
 {{- end }}

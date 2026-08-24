@@ -114,11 +114,25 @@ config:
 # ---------------------------------------------------------------------------
 # Sensitive Konfiguration -> Secret
 # ---------------------------------------------------------------------------
-# Bewusst nur Platzhalter. Die echten Werte kommen beim Deployment dazu:
-#   helm upgrade --install user-mgmt ./helm/user-mgmt \
-#     --set secrets.datasourcePassword='...' --set secrets.jwtSecret='...'
-# oder ueber eine nicht eingecheckte values-secret.yaml (-f).
 secrets:
+  # false: das Secret wird NICHT vom Chart verwaltet. Es muss einmalig pro
+  # Namespace per kubectl angelegt werden. Notwendig fuer GitOps, weil ArgoCD
+  # exakt das deployt, was im (oeffentlichen) Ops-Repository steht - Passwoerter
+  # duerfen dort nicht auftauchen.
+  #
+  #   kubectl create secret generic user-mgmt-secret -n user-mgmt \
+  #     --from-literal=SPRING_DATASOURCE_USERNAME=postgres \
+  #     --from-literal=SPRING_DATASOURCE_PASSWORD='<passwort>' \
+  #     --from-literal=JWT_SECRET='<base64-schluessel>'
+  #
+  # true: der Chart erzeugt das Secret aus den Werten unten. Nur sinnvoll bei
+  # lokalem Deployment mit --set, nicht im GitOps-Ablauf.
+  create: false
+
+  # Name eines bereits bestehenden Secrets. Leer = "<fullname>-secret".
+  existingSecret: ""
+
+  # Werden nur ausgewertet, wenn create=true.
   datasourceUsername: postgres
   datasourcePassword: CHANGEME
   jwtSecret: CHANGEME

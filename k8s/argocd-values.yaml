@@ -1,0 +1,24 @@
+# Werte fuer die ArgoCD-Installation (Helm Chart argo/argo-cd).
+# Angewendet von k8s/setup-cluster.sh bzw. manuell:
+#   helm upgrade --install argocd argo/argo-cd \
+#     -n argocd --create-namespace -f k8s/argocd-values.yaml
+
+global:
+  domain: argocd.lucavonsaal.com
+
+configs:
+  params:
+    # TLS wird am Ingress terminiert. Ohne dieses Flag erwartet der
+    # argocd-server selbst HTTPS und antwortet auf die bereits entschluesselte
+    # Anfrage von nginx mit einem Redirect auf HTTPS - eine Endlosschleife.
+    server.insecure: true
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Legt die tls-Section mit secretName "argocd-server-tls" an, die von
+    # cert-manager ueber die Annotation oben befuellt wird.
+    tls: true
