@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: user-mgmt
+data:
+  # --- PostgreSQL ---
+  POSTGRES_DB: postgres
+
+  # --- Spring Boot ---
+  # Das Backend erreicht die Datenbank ausschliesslich ueber den ClusterIP-Service "postgres".
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/postgres
+  # "update" statt "create": das PVC ist persistent, das Schema darf beim
+  # Pod-Restart nicht neu erzeugt (und damit geleert) werden.
+  SPRING_JPA_HIBERNATE_DDL_AUTO: update
+
+  # --- JWT (nicht sensitiv) ---
+  JWT_ISSUER: Spring
+  JWT_EXPIRATION_MILLIS: "86400000"

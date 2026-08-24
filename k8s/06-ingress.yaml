@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: user-mgmt
+  namespace: user-mgmt
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    # Entspricht dem frueheren Traefik "stripprefix": /api/users -> /users
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: app.67.207.74.210.nip.io
+      http:
+        paths:
+          # Backend zuerst: spezifischere Regel gewinnt.
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 3000
