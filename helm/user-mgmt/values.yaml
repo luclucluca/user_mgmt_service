@@ -16,7 +16,7 @@ backend:
   replicaCount: 1
   image:
     name: user_mgmt_service-backend
-    tag: 75a501f67f30af65e06e68000dd567a4dbba3dbd
+    tag: 26a9a48f861efcf3f99722c4b4817dbf31acfc27
   service:
     port: 8080
   resources:
@@ -44,7 +44,7 @@ frontend:
   replicaCount: 1
   image:
     name: user_mgmt_service-frontend
-    tag: 75a501f67f30af65e06e68000dd567a4dbba3dbd
+    tag: 26a9a48f861efcf3f99722c4b4817dbf31acfc27
   service:
     port: 3000
   resources:
