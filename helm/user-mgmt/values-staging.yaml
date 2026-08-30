@@ -6,18 +6,14 @@ ingress:
 
 resourceQuota:
   requestsCpu: "1"
-  requestsMemory: 1Gi
+  requestsMemory: 2Gi
   limitsCpu: "2"
-  limitsMemory: 2Gi
+  limitsMemory: 3Gi
 
-backend:
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
+# Backend bleibt auf Groesse des Basis-values.yaml (= Prod): eine JVM/Spring-Boot-
+# App braucht beim Start ausreichend CPU zum Class-Loading, sonst faellt die
+# startupProbe wiederholt aus (Container wird vor vollstaendigem Hochfahren
+# gekillt). Nur Frontend und Postgres sind hier reduziert.
 
 frontend:
   resources:
