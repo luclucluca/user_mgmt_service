@@ -57,7 +57,7 @@ backend:
     maxUnavailable: 1
   image:
     name: user_mgmt_service-backend
-    tag: 750c9a32dd6a4ff44adcf5920822e1905583f0a6
+    tag: fa0260837f766d9eebd905db88ad42896d1c8a2b
   service:
     port: 8080
   # Gemessen im laufenden Cluster (kubectl top): ~215Mi im Leerlauf.
@@ -111,7 +111,7 @@ frontend:
     maxUnavailable: 1
   image:
     name: user_mgmt_service-frontend
-    tag: 750c9a32dd6a4ff44adcf5920822e1905583f0a6
+    tag: fa0260837f766d9eebd905db88ad42896d1c8a2b
   service:
     port: 3000
   # Gemessen: ~127Mi im Leerlauf.
