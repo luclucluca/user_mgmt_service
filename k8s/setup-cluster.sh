@@ -2,7 +2,7 @@
 #
 # Baut die komplette Infrastruktur von Grund auf neu auf:
 # DOKS-Cluster -> ingress-nginx -> cert-manager -> ArgoCD -> Host ermitteln ->
-# ArgoCD Application registrieren (GitOps aus dem Ops-Repository user_mgmt_ops).
+# ArgoCD Application registrieren (GitOps aus helm/user-mgmt in diesem Repo).
 #
 # Idempotent: existiert der Cluster bereits, wird er weiterverwendet.
 #
@@ -21,9 +21,6 @@ HOSTS=("lucavonsaal.com" "www.lucavonsaal.com")
 # ArgoCD-Dashboard, siehe k8s/argocd-values.yaml. Rein informativ fuer den
 # DNS-Check unten, an keiner anderen Stelle im Skript verdrahtet.
 ARGOCD_HOST="argocd.lucavonsaal.com"
-# Oeffentliches Ops-Repository (siehe DECISION-011): enthaelt den Helm Chart
-# und das ArgoCD Application Manifest, das die App-Deployments verwaltet.
-OPS_REPO_APPLICATION_URL="https://raw.githubusercontent.com/luclucluca/user_mgmt_ops/main/argocd/application.yaml"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 K8S_DIR="${REPO_ROOT}/k8s"
@@ -161,17 +158,16 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-info "Applikation via ArgoCD ausrollen (GitOps, siehe DECISION-011)"
+info "Applikation via ArgoCD ausrollen"
 # ---------------------------------------------------------------------------
 # Die statischen Manifests k8s/0[0-6]-*.yaml (Aufgabe 1) werden bewusst NICHT
-# mehr angewendet: ArgoCD deployt dieselbe Anwendung ueber den Helm Chart aus
-# dem Ops-Repository in denselben Namespace. Beides gleichzeitig wuerde
+# mehr angewendet: ArgoCD deployt dieselbe Anwendung ueber den Helm Chart
+# unter helm/user-mgmt in denselben Namespace. Beides gleichzeitig wuerde
 # doppelte Postgres-Instanzen und kollidierende Ressourcen erzeugen.
 #
 # Das Secret wird bewusst nicht vom Chart erzeugt (secrets.create=false, siehe
-# helm/user-mgmt/values.yaml) - im GitOps-Ablauf duerfen Zugangsdaten nicht im
-# (oeffentlichen) Ops-Repository stehen. Es entsteht deshalb hier, einmalig,
-# aus der lokalen .env.
+# helm/user-mgmt/values.yaml) - Zugangsdaten duerfen nicht im (oeffentlichen)
+# Repository stehen. Es entsteht deshalb hier, einmalig, aus der lokalen .env.
 [ -f "${ENV_FILE}" ] || { echo "FEHLER: ${ENV_FILE} nicht gefunden"; exit 1; }
 env_value() { grep -E "^${1}=" "${ENV_FILE}" | cut -d= -f2-; }
 
@@ -183,7 +179,7 @@ kubectl create secret generic user-mgmt-secret -n "${NAMESPACE}" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 ok "Namespace und Secret bereit"
 
-kubectl apply -f "${OPS_REPO_APPLICATION_URL}"
+kubectl apply -f "${K8S_DIR}/argocd-application.yaml"
 ok "ArgoCD Application registriert"
 
 info "Auf ersten Sync warten"
@@ -226,9 +222,9 @@ fehlen. Naechste Schritte:
      Package settings -> Change visibility), sonst wird zusaetzlich
      ein imagePullSecret benoetigt.
 
-  4. Solange Aufgabe 4 (Pipeline-Promotion) nicht steht, bleibt der Image-Tag
-     in der values.yaml des Ops-Repos auf 'latest' - ArgoCD sieht dort keine
-     Aenderung. Nach einem neuen Build daher manuell:
+  4. Die Pipeline aktualisiert nach einem Build automatisch den Image-Tag in
+     helm/user-mgmt/values.yaml (Promotion-Commit) - ArgoCD zieht das
+     innerhalb weniger Minuten nach. Manuell geht's schneller:
        kubectl rollout restart deployment/user-mgmt-backend deployment/user-mgmt-frontend -n ${NAMESPACE}
        kubectl rollout status  deployment/user-mgmt-backend deployment/user-mgmt-frontend -n ${NAMESPACE}
 
@@ -238,8 +234,8 @@ fehlen. Naechste Schritte:
   6. Testen:
        curl -s -o /dev/null -w "%{http_code}\\n" https://${HOSTS[0]}/
 
-  7. Deployment aendern laeuft ab jetzt nur noch ueber Commits im
-     Ops-Repository (charts/user-mgmt/values.yaml), nicht mehr per kubectl/helm.
+  7. Deployment aendern laeuft ab jetzt nur noch ueber Commits auf main
+     (helm/user-mgmt/values.yaml), nicht mehr per kubectl/helm direkt.
 
 Cluster wieder abbauen (stoppt die Kosten):
        ./k8s/teardown-cluster.sh

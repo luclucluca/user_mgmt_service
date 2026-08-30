@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    # Verhindert eine Endlosschleife: der Promotion-Commit des "promote"-Jobs
+    # unten aendert nur diese Datei und darf keinen neuen Lauf ausloesen.
+    paths-ignore:
+      - helm/user-mgmt/values.yaml
   workflow_dispatch:
 
 env:
@@ -48,3 +52,27 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}:${{ github.sha }}
           build-args: ${{ matrix.build_args }}
+
+  promote:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Image-Tags in Helm values.yaml setzen
+        run: |
+          yq -i '.backend.image.tag = "${{ github.sha }}"' helm/user-mgmt/values.yaml
+          yq -i '.frontend.image.tag = "${{ github.sha }}"' helm/user-mgmt/values.yaml
+
+      - name: Commit und Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add helm/user-mgmt/values.yaml
+          git diff --cached --quiet && { echo "keine Aenderung"; exit 0; }
+          git commit -m "chore: promote images to ${{ github.sha }} [skip ci]"
+          git push
