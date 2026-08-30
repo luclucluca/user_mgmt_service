@@ -1,0 +1,11 @@
+ingress:
+  hosts:
+    - staging.lucavonsaal.com
+  tls:
+    clusterIssuer: letsencrypt-staging
+
+resourceQuota:
+  requestsCpu: "1"
+  requestsMemory: 2Gi
+  limitsCpu: "2"
+  limitsMemory: 4Gi

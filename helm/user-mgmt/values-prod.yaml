@@ -1,0 +1,12 @@
+ingress:
+  hosts:
+    - lucavonsaal.com
+    - www.lucavonsaal.com
+  tls:
+    clusterIssuer: letsencrypt-prod
+
+resourceQuota:
+  requestsCpu: "2"
+  requestsMemory: 4Gi
+  limitsCpu: "4"
+  limitsMemory: 8Gi

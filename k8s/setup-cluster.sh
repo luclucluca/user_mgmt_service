@@ -15,12 +15,14 @@ REGION="${REGION:-fra1}"
 NODE_SIZE="${NODE_SIZE:-s-2vcpu-4gb}"
 NODE_COUNT="${NODE_COUNT:-1}"
 NAMESPACE="user-mgmt"
+STAGING_NAMESPACE="user-mgmt-staging"
 # Muessen mit den Hosts in 06-ingress.yaml und dem Build-Arg in deploy.yml
 # uebereinstimmen.
 HOSTS=("lucavonsaal.com" "www.lucavonsaal.com")
 # ArgoCD-Dashboard, siehe k8s/argocd-values.yaml. Rein informativ fuer den
 # DNS-Check unten, an keiner anderen Stelle im Skript verdrahtet.
 ARGOCD_HOST="argocd.lucavonsaal.com"
+STAGING_HOST="staging.lucavonsaal.com"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 K8S_DIR="${REPO_ROOT}/k8s"
@@ -132,13 +134,15 @@ for host in "${HOSTS[@]}"; do
     DNS_OK=0
   fi
 done
-resolved=$(dig +short A "${ARGOCD_HOST}" | tail -1)
-if [ "${resolved}" = "${LB_IP}" ]; then
-  ok "${ARGOCD_HOST} -> ${resolved}"
-else
-  warn "${ARGOCD_HOST} -> ${resolved:-<keine Antwort>} (erwartet ${LB_IP})"
-  DNS_OK=0
-fi
+for h in "${ARGOCD_HOST}" "${STAGING_HOST}"; do
+  resolved=$(dig +short A "${h}" | tail -1)
+  if [ "${resolved}" = "${LB_IP}" ]; then
+    ok "${h} -> ${resolved}"
+  else
+    warn "${h} -> ${resolved:-<keine Antwort>} (erwartet ${LB_IP})"
+    DNS_OK=0
+  fi
+done
 if [ "${DNS_OK}" -eq 0 ]; then
   warn "A-Records auf ${LB_IP} zeigen lassen, sonst bleibt das Zertifikat aus."
   warn "Die Anwendung laeuft trotzdem an, nur ohne gueltiges TLS."
@@ -158,41 +162,48 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-info "Applikation via ArgoCD ausrollen"
+info "Applikationen via ArgoCD ausrollen (Prod + Staging)"
 # ---------------------------------------------------------------------------
 # Die statischen Manifests k8s/0[0-6]-*.yaml (Aufgabe 1) werden bewusst NICHT
 # mehr angewendet: ArgoCD deployt dieselbe Anwendung ueber den Helm Chart
-# unter helm/user-mgmt in denselben Namespace. Beides gleichzeitig wuerde
-# doppelte Postgres-Instanzen und kollidierende Ressourcen erzeugen.
+# unter helm/user-mgmt in zwei getrennte Namespaces (Prod/Staging).
 #
 # Das Secret wird bewusst nicht vom Chart erzeugt (secrets.create=false, siehe
-# helm/user-mgmt/values.yaml) - Zugangsdaten duerfen nicht im (oeffentlichen)
-# Repository stehen. Es entsteht deshalb hier, einmalig, aus der lokalen .env.
+# helm/user-mgmt/values.yaml). Es entsteht deshalb hier, einmalig pro
+# Namespace, aus der lokalen .env.
 [ -f "${ENV_FILE}" ] || { echo "FEHLER: ${ENV_FILE} nicht gefunden"; exit 1; }
 env_value() { grep -E "^${1}=" "${ENV_FILE}" | cut -d= -f2-; }
 
-kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-kubectl create secret generic user-mgmt-secret -n "${NAMESPACE}" \
-  --from-literal=SPRING_DATASOURCE_USERNAME="$(env_value SPRING_DATASOURCE_USERNAME)" \
-  --from-literal=SPRING_DATASOURCE_PASSWORD="$(env_value SPRING_DATASOURCE_PASSWORD)" \
-  --from-literal=JWT_SECRET="$(env_value JWT_SECRET)" \
-  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-ok "Namespace und Secret bereit"
+deploy_env() {
+  local ns="$1" secret_name="$2" statefulset="$3" app_file="$4"
 
-kubectl apply -f "${K8S_DIR}/argocd-application.yaml"
-ok "ArgoCD Application registriert"
+  kubectl create namespace "${ns}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl create secret generic "${secret_name}" -n "${ns}" \
+    --from-literal=SPRING_DATASOURCE_USERNAME="$(env_value SPRING_DATASOURCE_USERNAME)" \
+    --from-literal=SPRING_DATASOURCE_PASSWORD="$(env_value SPRING_DATASOURCE_PASSWORD)" \
+    --from-literal=JWT_SECRET="$(env_value JWT_SECRET)" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
-info "Auf ersten Sync warten"
-for _ in $(seq 1 60); do
-  kubectl get statefulset/user-mgmt-postgres -n "${NAMESPACE}" >/dev/null 2>&1 && break
-  sleep 5
-done
-kubectl wait --for=condition=Ready pod/user-mgmt-postgres-0 -n "${NAMESPACE}" --timeout=300s
+  kubectl apply -f "${K8S_DIR}/${app_file}"
+
+  for _ in $(seq 1 60); do
+    kubectl get "pod/${statefulset}-0" -n "${ns}" >/dev/null 2>&1 && break
+    sleep 5
+  done
+  kubectl wait --for=condition=Ready "pod/${statefulset}-0" -n "${ns}" --timeout=300s
+}
+
+deploy_env "${NAMESPACE}" user-mgmt-secret user-mgmt-postgres argocd-application-prod.yaml
+ok "Prod (${NAMESPACE}) bereit"
+
+deploy_env "${STAGING_NAMESPACE}" user-mgmt-staging-secret user-mgmt-staging-postgres argocd-application-staging.yaml
+ok "Staging (${STAGING_NAMESPACE}) bereit"
 
 # ---------------------------------------------------------------------------
 info "Status"
 # ---------------------------------------------------------------------------
-kubectl get pods,svc,pvc,ingress -n "${NAMESPACE}"
+kubectl get pods,svc,pvc,ingress,resourcequota,networkpolicy -n "${NAMESPACE}"
+kubectl get pods,svc,pvc,ingress,resourcequota,networkpolicy -n "${STAGING_NAMESPACE}"
 kubectl get application -n argocd
 
 ARGOCD_ADMIN_PW=$(kubectl -n argocd get secret argocd-initial-admin-secret \
@@ -202,7 +213,8 @@ cat <<EOF
 
 ────────────────────────────────────────────────────────────────────
 Infrastruktur steht. LoadBalancer-IP: ${LB_IP}
-Hosts: ${HOSTS[*]}
+Prod-Hosts: ${HOSTS[*]}
+Staging-Host: ${STAGING_HOST} (Namespace ${STAGING_NAMESPACE})
 
 ArgoCD Dashboard: https://${ARGOCD_HOST}
   Login: admin / ${ARGOCD_ADMIN_PW:-<kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d>}

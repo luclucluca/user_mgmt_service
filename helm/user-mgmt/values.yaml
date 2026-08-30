@@ -158,3 +158,22 @@ ingress:
     # Der ClusterIssuer selbst ist clusterweite Infrastruktur und wird nicht vom
     # Chart verwaltet, sondern von k8s/setup-cluster.sh angelegt.
     clusterIssuer: letsencrypt-prod
+
+# ---------------------------------------------------------------------------
+# ResourceQuota (pro Namespace/Umgebung, siehe values-staging.yaml/values-prod.yaml)
+# ---------------------------------------------------------------------------
+resourceQuota:
+  enabled: true
+  requestsCpu: "1"
+  requestsMemory: 2Gi
+  limitsCpu: "2"
+  limitsMemory: 4Gi
+
+# ---------------------------------------------------------------------------
+# NetworkPolicy: erlaubt eingehenden Traffic nur aus dem eigenen Namespace und
+# aus dem Ingress-Controller-Namespace, isoliert damit von anderen Namespaces
+# (z.B. der jeweils anderen Umgebung im selben Cluster).
+# ---------------------------------------------------------------------------
+networkPolicy:
+  enabled: true
+  allowFromNamespace: ingress-nginx
