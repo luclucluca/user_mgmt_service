@@ -16,7 +16,7 @@ backend:
   replicaCount: 1
   image:
     name: user_mgmt_service-backend
-    tag: 07f1f03090a67f71cb2ae390c63c15c271cd26f1
+    tag: 3c56c3c49a3142546ce4521ee26d72f1ba4b26bb
   service:
     port: 8080
   resources:
@@ -44,7 +44,7 @@ frontend:
   replicaCount: 1
   image:
     name: user_mgmt_service-frontend
-    tag: 07f1f03090a67f71cb2ae390c63c15c271cd26f1
+    tag: 3c56c3c49a3142546ce4521ee26d72f1ba4b26bb
   service:
     port: 3000
   resources:
@@ -149,7 +149,6 @@ ingress:
     # Der ClusterIssuer selbst ist clusterweite Infrastruktur und wird nicht vom
     # Chart verwaltet, sondern von k8s/setup-cluster.sh angelegt.
     clusterIssuer: letsencrypt-prod
-
 # ---------------------------------------------------------------------------
 # ResourceQuota (pro Namespace/Umgebung, siehe values-staging.yaml/values-prod.yaml)
 # ---------------------------------------------------------------------------
@@ -159,7 +158,6 @@ resourceQuota:
   requestsMemory: 2Gi
   limitsCpu: "2"
   limitsMemory: 4Gi
-
 # ---------------------------------------------------------------------------
 # NetworkPolicy: erlaubt eingehenden Traffic nur aus dem eigenen Namespace und
 # aus dem Ingress-Controller-Namespace, isoliert damit von anderen Namespaces
