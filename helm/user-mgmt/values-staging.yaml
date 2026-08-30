@@ -5,9 +5,9 @@ ingress:
     clusterIssuer: letsencrypt-staging
 
 resourceQuota:
-  requestsCpu: "500m"
+  requestsCpu: "1"
   requestsMemory: 1Gi
-  limitsCpu: "1"
+  limitsCpu: "2"
   limitsMemory: 2Gi
 
 backend:
