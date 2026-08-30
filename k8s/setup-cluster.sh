@@ -13,7 +13,17 @@ set -euo pipefail
 CLUSTER_NAME="${CLUSTER_NAME:-k8s-vscmodul}"
 REGION="${REGION:-fra1}"
 NODE_SIZE="${NODE_SIZE:-s-2vcpu-4gb}"
-NODE_COUNT="${NODE_COUNT:-1}"
+# Zwei Nodes als Minimum, nicht einer (Aufgabe 6):
+# - prod faehrt mit minReplicas: 2, staging mit 1, dazu ein Surge-Pod waehrend
+#   eines Rolling Updates - das passt nicht mehr auf einen s-2vcpu-4gb.
+# - Ein Pod Disruption Budget ist auf einem einzelnen Node wirkungslos: ein
+#   "kubectl drain" nimmt dort zwangslaeufig alles mit.
+# MAX_NODES gibt dem Cluster-Autoscaler Luft, wenn der HPA ueber die Kapazitaet
+# von zwei Nodes hinaus skaliert. Ohne das waere die Node-Ebene die stille
+# Obergrenze der Pod-Ebene: der HPA zaehlt hoch, die Pods bleiben Pending.
+NODE_COUNT="${NODE_COUNT:-2}"
+MIN_NODES="${MIN_NODES:-2}"
+MAX_NODES="${MAX_NODES:-3}"
 NAMESPACE="user-mgmt"
 STAGING_NAMESPACE="user-mgmt-staging"
 # Muessen mit den Hosts in 06-ingress.yaml und dem Build-Arg in deploy.yml
@@ -58,6 +68,20 @@ else
     --node-pool "name=pool-app;size=${NODE_SIZE};count=${NODE_COUNT}" \
     --wait
   ok "Cluster erstellt"
+fi
+
+# Autoscaling am Node-Pool. Bewusst als eigener Schritt statt im --node-pool
+# String von "cluster create": so greift es auch bei einem bereits
+# bestehenden Cluster, und "cluster create" akzeptiert dort ohnehin nur
+# name/size/count/tag/label/taint.
+POOL_ID=$(doctl kubernetes cluster node-pool list "${CLUSTER_NAME}" \
+            --format ID --no-header | head -1)
+if [ -n "${POOL_ID}" ]; then
+  doctl kubernetes cluster node-pool update "${CLUSTER_NAME}" "${POOL_ID}" \
+    --auto-scale --min-nodes "${MIN_NODES}" --max-nodes "${MAX_NODES}" >/dev/null
+  ok "Node-Pool auf Autoscaling ${MIN_NODES}-${MAX_NODES} gesetzt"
+else
+  warn "Node-Pool nicht gefunden - Autoscaling nicht gesetzt"
 fi
 
 kubectl config use-context "do-${REGION}-${CLUSTER_NAME}" >/dev/null 2>&1 || true

@@ -11,7 +11,10 @@
 set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-k8s-vscmodul}"
-NAMESPACE="user-mgmt"
+# Beide Umgebungen (Aufgabe 5). Wird staging hier vergessen, bleibt dessen
+# PersistentVolumeClaim - und damit ein kostenpflichtiges Block-Volume -
+# zurueck, auch wenn prod sauber abgeraeumt ist.
+NAMESPACES=("user-mgmt" "user-mgmt-staging")
 
 info() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m✓   %s\033[0m\n' "$*"; }
@@ -21,7 +24,9 @@ if ! doctl kubernetes cluster get "${CLUSTER_NAME}" >/dev/null 2>&1; then
   warn "Cluster '${CLUSTER_NAME}' existiert nicht – springe zur Restpruefung"
 else
   info "Applikation entfernen (gibt das PersistentVolume frei)"
-  kubectl delete namespace "${NAMESPACE}" --ignore-not-found --timeout=180s || true
+  for ns in "${NAMESPACES[@]}"; do
+    kubectl delete namespace "${ns}" --ignore-not-found --timeout=180s || true
+  done
 
   info "Ingress Controller entfernen (gibt den LoadBalancer frei)"
   helm uninstall ingress-nginx -n ingress-nginx 2>/dev/null || true
