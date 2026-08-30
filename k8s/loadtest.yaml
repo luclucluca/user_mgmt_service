@@ -1,0 +1,99 @@
+# Lasttest zum Nachweis des Horizontal Pod Autoscalers (Aufgabe 6).
+#
+# Bewusst NICHT Teil des Helm Charts: der Test ist ein einmaliges Werkzeug,
+# kein Bestandteil des gewuenschten Cluster-Zustands. Laege er unter
+# helm/user-mgmt, wuerde ArgoCD ihn dauerhaft mitverwalten und nach jedem
+# Abschluss neu ausrollen.
+#
+# Ziel ist POST /users/login: der Endpunkt ist unauthentifiziert erreichbar
+# (siehe WebSecurityConfig) und rechnet pro Anfrage einen BCrypt-Hash. Das
+# erzeugt echte CPU-Last im Backend statt nur Netzwerkverkehr - genau die
+# Groesse, auf die der HPA reagiert. Die Zugangsdaten sind absichtlich
+# ungueltig; es wird nichts angelegt oder veraendert.
+#
+# Anwenden:
+#   kubectl apply -f k8s/loadtest.yaml -n user-mgmt
+#
+# Parallel dazu beobachten:
+#   kubectl get hpa -n user-mgmt -w
+#   kubectl get pods -n user-mgmt -w
+#
+# Aufraeumen:
+#   kubectl delete -f k8s/loadtest.yaml -n user-mgmt
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hpa-loadtest-script
+data:
+  loadtest.js: |
+    import http from 'k6/http';
+    import { check } from 'k6';
+
+    export const options = {
+      // Rampe statt konstanter Last: so ist im HPA-Verlauf sowohl das
+      // Hochskalieren als auch - nach dem Ende - das Herunterskalieren
+      // innerhalb des stabilizationWindow von 5 Minuten zu sehen.
+      stages: [
+        { duration: '1m', target: 20 },   // anfahren
+        { duration: '4m', target: 20 },   // Last halten, HPA skaliert hoch
+        { duration: '30s', target: 0 },   // abschalten
+      ],
+      // Fehlerhafte Logins sind hier der Normalfall, keine Schwellwerte noetig.
+      thresholds: {},
+    };
+
+    // Ueber den ClusterIP-Service: stabil und unabhaengig von DNS und TLS.
+    // Fuer den Nachweis des Round Robin am Ingress stattdessen
+    //   https://lucavonsaal.com/api/users/login
+    // setzen und insecureSkipTLSVerify aktivieren.
+    const URL = __ENV.TARGET_URL;
+
+    export default function () {
+      const res = http.post(
+        URL,
+        JSON.stringify({ email: 'loadtest@example.com', password: 'wrong-on-purpose' }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+      // 401/403 ist das erwartete Ergebnis - entscheidend ist, dass das
+      // Backend geantwortet hat und nicht weggebrochen ist.
+      check(res, { 'backend hat geantwortet': (r) => r.status !== 0 });
+    }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hpa-loadtest
+spec:
+  # Kein Neustart bei Fehlschlag: ein haengender Lasttest soll auffallen,
+  # nicht im Hintergrund weiterlaufen.
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.49.0
+          args: ["run", "/scripts/loadtest.js"]
+          env:
+            # Der Servicename ist releaseabhaengig. In user-mgmt-staging
+            # entsprechend auf user-mgmt-staging-backend anpassen.
+            - name: TARGET_URL
+              value: "http://user-mgmt-backend:8080/users/login"
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+          # Der Lastgenerator laeuft auf demselben knappen Node wie die
+          # Applikation. Enge Limits stellen sicher, dass er dem Backend keine
+          # CPU wegnimmt - sonst misst man den Test statt der Applikation.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: script
+          configMap:
+            name: hpa-loadtest-script

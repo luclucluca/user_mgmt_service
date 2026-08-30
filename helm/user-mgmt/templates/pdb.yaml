@@ -1,0 +1,31 @@
+{{/*
+Pod Disruption Budget (Aufgabe 6).
+
+Greift bei *freiwilligen* Stoerungen - "kubectl drain" bei Wartung, Node-Upgrade,
+Re-Scheduling durch den Cluster-Autoscaler. Kubernetes verweigert dort eine
+Eviction, solange sie das Budget verletzen wuerde, und wartet stattdessen.
+Bei unfreiwilligen Stoerungen (Node-Ausfall, OOM) greift ein PDB nicht.
+
+Bewusst "maxUnavailable" statt "minAvailable", weil das Budget damit auch bei
+nur einer Replica funktioniert: minAvailable=1 wuerde bei replicas=1 jeden
+Drain dauerhaft blockieren, weil die einzige Replica nie entfernt werden darf.
+maxUnavailable=1 erlaubt den Drain und haelt bei >1 Replicas trotzdem
+mindestens n-1 Pods aktiv.
+*/}}
+{{- range $component := list "backend" "frontend" }}
+{{- $cfg := index $.Values $component }}
+{{- if $cfg.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "user-mgmt.componentName" (dict "ctx" $ "component" $component) }}
+  labels:
+    {{- include "user-mgmt.componentLabels" (dict "ctx" $ "component" $component) | nindent 4 }}
+spec:
+  maxUnavailable: {{ $cfg.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "user-mgmt.componentSelectorLabels" (dict "ctx" $ "component" $component) | nindent 6 }}
+{{- end }}
+{{- end }}

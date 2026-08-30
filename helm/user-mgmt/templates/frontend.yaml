@@ -21,7 +21,28 @@ metadata:
   labels:
     {{- include "user-mgmt.componentLabels" (dict "ctx" $ "component" "frontend") | nindent 4 }}
 spec:
+  # Kein "replicas" im Manifest, solange der HPA aktiv ist. Sonst schreibt
+  # jeder "helm upgrade" bzw. jeder ArgoCD-Sync mit selfHeal=true die vom HPA
+  # gesetzte Replica-Zahl auf den Chart-Wert zurueck - Autoscaler und GitOps
+  # wuerden sich dauerhaft gegenseitig ueberschreiben.
+  {{- if not .Values.frontend.autoscaling.enabled }}
   replicas: {{ .Values.frontend.replicaCount }}
+  {{- end }}
+  # RollingUpdate mit maxUnavailable 0 - waehrend eines Updates darf nie eine
+  # Replica unter den Sollstand fallen. Kubernetes startet zuerst den neuen
+  # Pod, wartet dessen readinessProbe ab und entfernt erst dann den alten,
+  # damit ist das Deployment unterbrechungsfrei.
+  #
+  # maxSurge 1 begrenzt den dabei zusaetzlich benoetigten Platz auf genau
+  # einen Pod. Wichtig auf einem knappen Node - passt dieser eine Pod nicht
+  # mehr, bleibt das Update haengen (Pending) statt durchzulaufen.
+  strategy:
+    type: {{ .Values.frontend.strategy.type }}
+    {{- if eq .Values.frontend.strategy.type "RollingUpdate" }}
+    rollingUpdate:
+      maxUnavailable: {{ .Values.frontend.strategy.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ .Values.frontend.strategy.rollingUpdate.maxSurge }}
+    {{- end }}
   selector:
     matchLabels:
       {{- include "user-mgmt.componentSelectorLabels" (dict "ctx" $ "component" "frontend") | nindent 6 }}

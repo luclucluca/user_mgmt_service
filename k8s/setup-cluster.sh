@@ -89,6 +89,28 @@ helm upgrade --install cert-manager jetstack/cert-manager \
 ok "cert-manager installiert"
 
 # ---------------------------------------------------------------------------
+info "metrics-server installieren"
+# ---------------------------------------------------------------------------
+# Voraussetzung fuer den Horizontal Pod Autoscaler (Aufgabe 6): er liefert die
+# Metrics API, aus der der HPA CPU- und Speicherauslastung liest. Ohne ihn
+# steht der HPA dauerhaft auf "<unknown>" und skaliert nie.
+#
+# Aeltere DOKS-Images brachten metrics-server mit, das aktuelle (v1.36, Cilium)
+# nicht mehr - deshalb hier explizit.
+#
+# --kubelet-insecure-tls: die Kubelets stellen Zertifikate auf ihre interne IP
+# aus, die metrics-server nicht gegen die Cluster-CA verifizieren kann.
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ >/dev/null 2>&1 || true
+helm repo update metrics-server >/dev/null
+helm upgrade --install metrics-server metrics-server/metrics-server \
+  --namespace kube-system \
+  --set 'args={--kubelet-insecure-tls}' \
+  --set resources.requests.cpu=50m \
+  --set resources.requests.memory=100Mi \
+  --wait --timeout 5m >/dev/null
+ok "metrics-server installiert (kubectl top nodes zum Pruefen)"
+
+# ---------------------------------------------------------------------------
 info "ArgoCD installieren"
 # ---------------------------------------------------------------------------
 # Eigener, von der Applikation getrennter Namespace (Aufgabe 3). Die Werte in

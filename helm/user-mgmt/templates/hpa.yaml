@@ -1,0 +1,54 @@
+{{/*
+Horizontal Pod Autoscaler (Aufgabe 6).
+
+Der HPA vergleicht den tatsaechlichen Verbrauch eines Pods mit dessen
+*request* - nicht mit dem Limit. Ohne deklarierte requests kann er keine
+Auslastung berechnen und bleibt auf "<unknown>" stehen. Deshalb sind
+requests/limits im Chart fuer jede Komponente verbindlich gesetzt.
+
+Voraussetzung im Cluster ist der metrics-server (siehe k8s/setup-cluster.sh):
+er liefert die Metrics API, aus der der HPA liest.
+*/}}
+{{- range $component := list "backend" "frontend" }}
+{{- $cfg := index $.Values $component }}
+{{- if $cfg.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "user-mgmt.componentName" (dict "ctx" $ "component" $component) }}
+  labels:
+    {{- include "user-mgmt.componentLabels" (dict "ctx" $ "component" $component) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "user-mgmt.componentName" (dict "ctx" $ "component" $component) }}
+  minReplicas: {{ $cfg.autoscaling.minReplicas }}
+  maxReplicas: {{ $cfg.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $cfg.autoscaling.targetCPUUtilizationPercentage }}
+    {{- if $cfg.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $cfg.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+  behavior:
+    scaleUp:
+      # Kurzes Fenster: bei Lastspitzen soll schnell reagiert werden.
+      stabilizationWindowSeconds: {{ $cfg.autoscaling.behavior.scaleUp.stabilizationWindowSeconds }}
+    scaleDown:
+      # Langes Fenster: verhindert "Flapping", also staendiges Hoch- und
+      # Runterskalieren bei schwankender Last. Der HPA wartet, bis die
+      # Entlastung ueber diesen Zeitraum stabil war.
+      stabilizationWindowSeconds: {{ $cfg.autoscaling.behavior.scaleDown.stabilizationWindowSeconds }}
+{{- end }}
+{{- end }}

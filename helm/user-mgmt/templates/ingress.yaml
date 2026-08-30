@@ -18,10 +18,20 @@ metadata:
   name: {{ include "user-mgmt.fullname" . }}-web
   labels:
     {{- include "user-mgmt.labels" . | nindent 4 }}
-  {{- if .Values.ingress.tls.enabled }}
   annotations:
+    # Lastverteilung (Aufgabe 6). ingress-nginx verteilt ohne Session Affinity
+    # per Round Robin - und zwar ueber die Endpoints des Service. Ein Endpoint
+    # entsteht erst, wenn die readinessProbe des Pods erfolgreich ist, und
+    # verschwindet sofort wieder, sobald sie fehlschlaegt. Damit trifft
+    # Traffic ausschliesslich bereite Replicas, ohne dass es dafuer eine
+    # eigene Konfiguration braucht.
+    #
+    # Der Default wird trotzdem explizit gesetzt - er ist damit dokumentiert
+    # und gegen eine geaenderte Controller-Konfiguration abgesichert.
+    nginx.ingress.kubernetes.io/load-balance: {{ .Values.ingress.loadBalance | quote }}
+    {{- if .Values.ingress.tls.enabled }}
     cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.clusterIssuer | quote }}
-  {{- end }}
+    {{- end }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   {{- if .Values.ingress.tls.enabled }}
@@ -54,6 +64,7 @@ metadata:
   labels:
     {{- include "user-mgmt.labels" . | nindent 4 }}
   annotations:
+    nginx.ingress.kubernetes.io/load-balance: {{ .Values.ingress.loadBalance | quote }}
     nginx.ingress.kubernetes.io/use-regex: "true"
     # Entspricht dem frueheren Traefik "stripprefix": /api/users -> /users
     nginx.ingress.kubernetes.io/rewrite-target: {{ .Values.ingress.api.rewriteTarget | quote }}

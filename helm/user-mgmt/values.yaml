@@ -13,16 +13,61 @@ image:
 # Backend (Spring Boot)
 # ---------------------------------------------------------------------------
 backend:
+  # Nur wirksam, wenn autoscaling.enabled=false. Ist der HPA aktiv, steht die
+  # Replica-Zahl bewusst nicht im Manifest (siehe Kommentar in backend.yaml).
   replicaCount: 1
+  # -------------------------------------------------------------------------
+  # Horizontal Pod Autoscaler (Aufgabe 6)
+  # -------------------------------------------------------------------------
+  autoscaling:
+    enabled: true
+    # minReplicas: 2 statt 1 - erst ab zwei Replicas ist die Applikation
+    # hochverfuegbar und ein PDB ueberhaupt wirksam.
+    minReplicas: 2
+    # Obergrenze aus der Node-Kapazitaet abgeleitet, nicht frei gegriffen:
+    # 4 x 320Mi request = 1.25Gi allein fuers Backend. Wird maxReplicas hoeher
+    # gesetzt als Node bzw. ResourceQuota hergeben, skaliert der HPA zwar, die
+    # zusaetzlichen Pods bleiben aber Pending.
+    maxReplicas: 4
+    # Bezugsgroesse ist der CPU-*request* (200m), nicht das Limit:
+    # skaliert wird ab 140m tatsaechlicher Last pro Pod.
+    targetCPUUtilizationPercentage: 70
+    # Speicher bewusst nicht als Skalierungsmetrik: eine JVM gibt einmal
+    # allozierten Heap kaum zurueck, der Wert bliebe dauerhaft hoch und
+    # wuerde ein Herunterskalieren verhindern.
+    targetMemoryUtilizationPercentage: null
+    behavior:
+      scaleUp:
+        # Sofort hochskalieren - Last soll nicht auf ein Fenster warten.
+        stabilizationWindowSeconds: 0
+      scaleDown:
+        # 5 Minuten abwarten, bevor reduziert wird (gegen Flapping).
+        stabilizationWindowSeconds: 300
+  # -------------------------------------------------------------------------
+  # Update- und Wartungsverhalten (Aufgabe 6)
+  # -------------------------------------------------------------------------
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # 0 = zu keinem Zeitpunkt weniger als der Sollstand -> kein Unterbruch.
+      maxUnavailable: 0
+      maxSurge: 1
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
   image:
     name: user_mgmt_service-backend
     tag: 750c9a32dd6a4ff44adcf5920822e1905583f0a6
   service:
     port: 8080
+  # Gemessen im laufenden Cluster (kubectl top): ~215Mi im Leerlauf.
+  # request 320Mi deckt das mit Reserve fuer Last und GC ab; die vorherigen
+  # 512Mi haben den Node blockiert, ohne je gebraucht zu werden.
+  # limit bleibt 1Gi, damit die JVM unter Last Luft hat.
   resources:
     requests:
       cpu: 200m
-      memory: 512Mi
+      memory: 320Mi
     limits:
       cpu: 1000m
       memory: 1Gi
@@ -42,15 +87,38 @@ backend:
 # eingebacken (siehe frontend/Dockerfile) und laesst sich hier nicht setzen.
 frontend:
   replicaCount: 1
+  # Aufgabe 6 verlangt Autoscaling ausdruecklich fuer das Backend. Das Frontend
+  # liefert statische Seiten aus und ist nicht der Engpass - der Block ist
+  # vorbereitet, aber abgeschaltet.
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: null
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 0
+      scaleDown:
+        stabilizationWindowSeconds: 300
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
   image:
     name: user_mgmt_service-frontend
     tag: 750c9a32dd6a4ff44adcf5920822e1905583f0a6
   service:
     port: 3000
+  # Gemessen: ~127Mi im Leerlauf.
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 192Mi
     limits:
       cpu: 500m
       memory: 512Mi
@@ -81,10 +149,12 @@ postgres:
     accessMode: ReadWriteOnce
     size: 1Gi
     mountPath: /var/lib/postgresql/data
+  # Gemessen: ~43Mi im Leerlauf. Der Datenbestand ist klein, PostgreSQL nutzt
+  # darueber hinaus den Page Cache des Nodes statt eigenen Speicher.
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 128Mi
     limits:
       cpu: 500m
       memory: 512Mi
@@ -134,6 +204,10 @@ secrets:
 ingress:
   enabled: true
   className: nginx
+  # Verteilalgorithmus des Ingress Controllers ueber die ready Endpoints.
+  # "round_robin" ist der Default von ingress-nginx und hier bewusst
+  # ausgeschrieben (siehe Kommentar in templates/ingress.yaml).
+  loadBalance: round_robin
   hosts:
     - lucavonsaal.com
     - www.lucavonsaal.com
