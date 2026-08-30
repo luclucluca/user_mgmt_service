@@ -7,8 +7,12 @@ ingress:
 resourceQuota:
   requestsCpu: "1"
   requestsMemory: 2Gi
-  limitsCpu: "2"
-  limitsMemory: 3Gi
+  # limits.* braucht Puffer ueber die Summe der Steady-State-Limits hinaus:
+  # bei einem Rolling Update laufen alter und neuer Pod kurz nebeneinander.
+  # Die tatsaechliche Kapazitaetsgrenze ist ohnehin die Node ueber requests.*,
+  # nicht dieser Wert.
+  limitsCpu: "4"
+  limitsMemory: 4Gi
 
 # Backend bleibt auf Groesse des Basis-values.yaml (= Prod): eine JVM/Spring-Boot-
 # App braucht beim Start ausreichend CPU zum Class-Loading, sonst faellt die
