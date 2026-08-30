@@ -23,7 +23,7 @@ export function EmailField({
                 <MailIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                     id="email"
-                    placeholder="john.doe@example.com"
+                    placeholder="teko@example.com"
                     className={cn("bg-background pl-10", className)}
                     {...props}
                 />
