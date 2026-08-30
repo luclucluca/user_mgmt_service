@@ -12,7 +12,7 @@ ingress:
 # aus dem Rolling Update, also 5 Backend-Pods gleichzeitig.
 #
 #   requests.cpu    5x200m + 100m + 100m  = 1200m  -> 2
-#   requests.memory 5x320Mi + 192 + 128   = 1920Mi -> 4Gi
+#   requests.memory 5x448Mi + 192 + 128   = 2560Mi -> 4Gi
 #   limits.cpu      5x1000m + 500m + 500m = 6000m  -> 6   (vorher 4 = zu knapp)
 #   limits.memory   5x1Gi + 512Mi + 512Mi = 6Gi    -> 8Gi
 #

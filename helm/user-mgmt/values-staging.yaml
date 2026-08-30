@@ -23,9 +23,9 @@ backend:
 # Ist sie zu knapp, skaliert der HPA zwar, die Pods scheitern aber still an
 # "exceeded quota" - der haeufigste Grund fuer einen HPA, der nichts bewirkt.
 #
-# Rechnung (2 Backend-Replicas max + 1 Surge = 3 x 320Mi/200m):
+# Rechnung (2 Backend-Replicas max + 1 Surge = 3 x 448Mi/200m):
 #   requests.cpu    3x200m + 50m + 50m  = 700m   -> 1
-#   requests.memory 3x320Mi + 128 + 128 = 1216Mi -> 2Gi
+#   requests.memory 3x448Mi + 128 + 128 = 1600Mi -> 2Gi
 #   limits.cpu      3x1000m + 250 + 250 = 3500m  -> 4
 #   limits.memory   3x1Gi + 256 + 256   = 3.5Gi  -> 4Gi
 resourceQuota:

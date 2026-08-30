@@ -60,14 +60,23 @@ backend:
     tag: 750c9a32dd6a4ff44adcf5920822e1905583f0a6
   service:
     port: 8080
-  # Gemessen im laufenden Cluster (kubectl top): ~215Mi im Leerlauf.
-  # request 320Mi deckt das mit Reserve fuer Last und GC ab; die vorherigen
-  # 512Mi haben den Node blockiert, ohne je gebraucht zu werden.
-  # limit bleibt 1Gi, damit die JVM unter Last Luft hat.
+  # Zweimal gemessen (kubectl top): ~215Mi im Leerlauf, ~430Mi unter Last.
+  # Massgeblich ist der zweite Wert - die JVM dimensioniert ihren Heap am
+  # Container-*Limit* (1Gi), nicht am Request, und gibt einmal allozierten
+  # Speicher nicht wieder ans Betriebssystem zurueck.
+  #
+  # 320Mi (aus der reinen Leerlaufmessung) waren zu niedrig: der Node war unter
+  # Last real zu 86% belegt bei nur 69% Reservierung. Pods, die dauerhaft mehr
+  # verbrauchen als sie reservieren, sind bei Speicherdruck die ersten
+  # Eviction-Kandidaten.
+  #
+  # Alternative waere ein kleineres Limit, damit die JVM von sich aus weniger
+  # Heap nimmt - das erkauft man sich aber mit OOM-Risiko unter Spitzenlast.
+  # Die ehrliche Reservierung ist der sicherere Weg.
   resources:
     requests:
       cpu: 200m
-      memory: 320Mi
+      memory: 448Mi
     limits:
       cpu: 1000m
       memory: 1Gi
