@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Baut die komplette Infrastruktur fuer Aufgabe 1 von Grund auf neu auf:
-# DOKS-Cluster -> ingress-nginx -> Host ermitteln -> Manifests anpassen -> apply.
+# Baut die komplette Infrastruktur von Grund auf neu auf:
+# DOKS-Cluster -> ingress-nginx -> cert-manager -> ArgoCD -> Host ermitteln ->
+# ArgoCD Application registrieren (GitOps aus dem Ops-Repository user_mgmt_ops).
 #
 # Idempotent: existiert der Cluster bereits, wird er weiterverwendet.
 #
@@ -17,9 +18,16 @@ NAMESPACE="user-mgmt"
 # Muessen mit den Hosts in 06-ingress.yaml und dem Build-Arg in deploy.yml
 # uebereinstimmen.
 HOSTS=("lucavonsaal.com" "www.lucavonsaal.com")
+# ArgoCD-Dashboard, siehe k8s/argocd-values.yaml. Rein informativ fuer den
+# DNS-Check unten, an keiner anderen Stelle im Skript verdrahtet.
+ARGOCD_HOST="argocd.lucavonsaal.com"
+# Oeffentliches Ops-Repository (siehe DECISION-011): enthaelt den Helm Chart
+# und das ArgoCD Application Manifest, das die App-Deployments verwaltet.
+OPS_REPO_APPLICATION_URL="https://raw.githubusercontent.com/luclucluca/user_mgmt_ops/main/argocd/application.yaml"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 K8S_DIR="${REPO_ROOT}/k8s"
+ENV_FILE="${REPO_ROOT}/.env"
 WORKFLOW="${REPO_ROOT}/.github/workflows/deploy.yml"
 
 info()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
@@ -82,6 +90,20 @@ helm upgrade --install cert-manager jetstack/cert-manager \
 ok "cert-manager installiert"
 
 # ---------------------------------------------------------------------------
+info "ArgoCD installieren"
+# ---------------------------------------------------------------------------
+# Eigener, von der Applikation getrennter Namespace (Aufgabe 3). Die Werte in
+# argocd-values.yaml schalten TLS-Terminierung an den Ingress durch (server.insecure)
+# und aktivieren dessen Ingress auf argocd.lucavonsaal.com.
+helm repo add argo https://argoproj.github.io/argo-helm >/dev/null 2>&1 || true
+helm repo update argo >/dev/null
+helm upgrade --install argocd argo/argo-cd \
+  --namespace argocd --create-namespace \
+  -f "${K8S_DIR}/argocd-values.yaml" \
+  --wait --timeout 10m >/dev/null
+ok "ArgoCD installiert"
+
+# ---------------------------------------------------------------------------
 info "Auf LoadBalancer-IP warten (DigitalOcean provisioniert, ca. 2-5 Min)"
 # ---------------------------------------------------------------------------
 LB_IP=""
@@ -113,45 +135,81 @@ for host in "${HOSTS[@]}"; do
     DNS_OK=0
   fi
 done
+resolved=$(dig +short A "${ARGOCD_HOST}" | tail -1)
+if [ "${resolved}" = "${LB_IP}" ]; then
+  ok "${ARGOCD_HOST} -> ${resolved}"
+else
+  warn "${ARGOCD_HOST} -> ${resolved:-<keine Antwort>} (erwartet ${LB_IP})"
+  DNS_OK=0
+fi
 if [ "${DNS_OK}" -eq 0 ]; then
   warn "A-Records auf ${LB_IP} zeigen lassen, sonst bleibt das Zertifikat aus."
   warn "Die Anwendung laeuft trotzdem an, nur ohne gueltiges TLS."
 fi
 
 # ---------------------------------------------------------------------------
-info "Manifests ausrollen"
+info "ClusterIssuer anwenden"
 # ---------------------------------------------------------------------------
-# 00 bis 06 direkt. 07 wird separat behandelt, weil dort die ACME-Adresse
-# eingesetzt werden muss, die absichtlich nicht im Manifest steht.
-for manifest in "${K8S_DIR}"/0[0-6]-*.yaml; do
-  kubectl apply -f "${manifest}"
-done
-
-ACME_EMAIL=$(grep -E '^ACME_EMAIL=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- || true)
-if [ -n "${ACME_EMAIL}" ]; then
-  # Ueber stdin, damit die Adresse nicht in die versionierte Datei geschrieben wird.
-  sed "s|PLACEHOLDER_ACME_EMAIL|${ACME_EMAIL}|" "${K8S_DIR}/07-tls-issuer.yaml" \
-    | kubectl apply -f -
-  ok "ClusterIssuer mit ACME_EMAIL aus .env angewendet"
+# Cluster-weite Ressource, unabhaengig vom GitOps-Ablauf unten. Braucht die
+# ACME-Adresse aus .env, siehe apply-tls-issuer.sh. Ein fehlender Eintrag darf
+# den Rest des Aufbaus nicht abbrechen, deshalb das if/else statt "||".
+if "${K8S_DIR}/apply-tls-issuer.sh"; then
+  ok "ClusterIssuer angewendet"
 else
-  warn "ACME_EMAIL fehlt in .env — ClusterIssuer uebersprungen, es gibt kein TLS."
-  warn "Nachtragen und dann: sed \"s|PLACEHOLDER_ACME_EMAIL|<adresse>|\" \\"
-  warn "  ${K8S_DIR}/07-tls-issuer.yaml | kubectl apply -f -"
+  warn "ClusterIssuer uebersprungen — es gibt kein TLS."
+  warn "ACME_EMAIL in .env nachtragen, dann: ./k8s/apply-tls-issuer.sh"
 fi
 
-info "Auf PostgreSQL warten"
-kubectl wait --for=condition=Ready pod/postgres-0 -n "${NAMESPACE}" --timeout=300s
+# ---------------------------------------------------------------------------
+info "Applikation via ArgoCD ausrollen (GitOps, siehe DECISION-011)"
+# ---------------------------------------------------------------------------
+# Die statischen Manifests k8s/0[0-6]-*.yaml (Aufgabe 1) werden bewusst NICHT
+# mehr angewendet: ArgoCD deployt dieselbe Anwendung ueber den Helm Chart aus
+# dem Ops-Repository in denselben Namespace. Beides gleichzeitig wuerde
+# doppelte Postgres-Instanzen und kollidierende Ressourcen erzeugen.
+#
+# Das Secret wird bewusst nicht vom Chart erzeugt (secrets.create=false, siehe
+# helm/user-mgmt/values.yaml) - im GitOps-Ablauf duerfen Zugangsdaten nicht im
+# (oeffentlichen) Ops-Repository stehen. Es entsteht deshalb hier, einmalig,
+# aus der lokalen .env.
+[ -f "${ENV_FILE}" ] || { echo "FEHLER: ${ENV_FILE} nicht gefunden"; exit 1; }
+env_value() { grep -E "^${1}=" "${ENV_FILE}" | cut -d= -f2-; }
+
+kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+kubectl create secret generic user-mgmt-secret -n "${NAMESPACE}" \
+  --from-literal=SPRING_DATASOURCE_USERNAME="$(env_value SPRING_DATASOURCE_USERNAME)" \
+  --from-literal=SPRING_DATASOURCE_PASSWORD="$(env_value SPRING_DATASOURCE_PASSWORD)" \
+  --from-literal=JWT_SECRET="$(env_value JWT_SECRET)" \
+  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+ok "Namespace und Secret bereit"
+
+kubectl apply -f "${OPS_REPO_APPLICATION_URL}"
+ok "ArgoCD Application registriert"
+
+info "Auf ersten Sync warten"
+for _ in $(seq 1 60); do
+  kubectl get statefulset/user-mgmt-postgres -n "${NAMESPACE}" >/dev/null 2>&1 && break
+  sleep 5
+done
+kubectl wait --for=condition=Ready pod/user-mgmt-postgres-0 -n "${NAMESPACE}" --timeout=300s
 
 # ---------------------------------------------------------------------------
 info "Status"
 # ---------------------------------------------------------------------------
 kubectl get pods,svc,pvc,ingress -n "${NAMESPACE}"
+kubectl get application -n argocd
+
+ARGOCD_ADMIN_PW=$(kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true)
 
 cat <<EOF
 
 ────────────────────────────────────────────────────────────────────
 Infrastruktur steht. LoadBalancer-IP: ${LB_IP}
 Hosts: ${HOSTS[*]}
+
+ArgoCD Dashboard: https://${ARGOCD_HOST}
+  Login: admin / ${ARGOCD_ADMIN_PW:-<kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d>}
 
 Backend und Frontend stehen auf ErrImagePull, solange die Images
 fehlen. Naechste Schritte:
@@ -161,24 +219,27 @@ fehlen. Naechste Schritte:
      stellt Let's Encrypt kein Zertifikat aus.
 
   2. Falls oben gewarnt wurde, dass ACME_EMAIL fehlt: in .env
-     nachtragen und den Issuer anwenden (die Adresse wird bewusst
-     nicht in das versionierte Manifest geschrieben):
-       sed "s|PLACEHOLDER_ACME_EMAIL|<adresse>|" \\
-         ${K8S_DIR}/07-tls-issuer.yaml | kubectl apply -f -
+     nachtragen und den Issuer anwenden:
+       ./k8s/apply-tls-issuer.sh
 
   3. GHCR-Packages auf 'public' stellen (GitHub -> Packages ->
      Package settings -> Change visibility), sonst wird zusaetzlich
      ein imagePullSecret benoetigt.
 
-  4. Nach dem Actions-Run die Pods auf das neue 'latest' ziehen lassen:
-       kubectl rollout restart deployment/backend deployment/frontend -n ${NAMESPACE}
-       kubectl rollout status  deployment/backend deployment/frontend -n ${NAMESPACE}
+  4. Solange Aufgabe 4 (Pipeline-Promotion) nicht steht, bleibt der Image-Tag
+     in der values.yaml des Ops-Repos auf 'latest' - ArgoCD sieht dort keine
+     Aenderung. Nach einem neuen Build daher manuell:
+       kubectl rollout restart deployment/user-mgmt-backend deployment/user-mgmt-frontend -n ${NAMESPACE}
+       kubectl rollout status  deployment/user-mgmt-backend deployment/user-mgmt-frontend -n ${NAMESPACE}
 
   5. Zertifikat pruefen (READY muss True werden, dauert 1-2 Min):
        kubectl get certificate -n ${NAMESPACE} -w
 
   6. Testen:
        curl -s -o /dev/null -w "%{http_code}\\n" https://${HOSTS[0]}/
+
+  7. Deployment aendern laeuft ab jetzt nur noch ueber Commits im
+     Ops-Repository (charts/user-mgmt/values.yaml), nicht mehr per kubectl/helm.
 
 Cluster wieder abbauen (stoppt die Kosten):
        ./k8s/teardown-cluster.sh
