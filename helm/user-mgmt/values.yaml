@@ -57,7 +57,7 @@ backend:
     maxUnavailable: 1
   image:
     name: user_mgmt_service-backend
-    tag: a184888010c0a05790a601ea78f2787ed61ea42f
+    tag: d9badc27cff8bb1f0e6de8f20e47a8e5b8a89449
   service:
     port: 8080
   # Zweimal gemessen (kubectl top): ~215Mi im Leerlauf, ~430Mi unter Last.
@@ -120,7 +120,7 @@ frontend:
     maxUnavailable: 1
   image:
     name: user_mgmt_service-frontend
-    tag: a184888010c0a05790a601ea78f2787ed61ea42f
+    tag: d9badc27cff8bb1f0e6de8f20e47a8e5b8a89449
   service:
     port: 3000
   # Gemessen: ~127Mi im Leerlauf.
