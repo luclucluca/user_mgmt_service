@@ -1,15 +1,5 @@
-# ClusterIssuer sind clusterweit (kein namespace) und werden von cert-manager
-# bereitgestellt. Die CRDs muessen installiert sein, bevor diese Datei angewendet
-# werden kann — siehe setup-cluster.sh.
-#
-# WICHTIG: "email" unten muss gesetzt werden. Let's Encrypt verlangt eine
-# Adresse fuer das ACME-Konto (Ablaufwarnungen). Der Wert steht bereits als
-# ACME_EMAIL in der lokalen .env vom Traefik-Setup.
-#
-# Staging zuerst verwenden: der Produktions-Endpunkt von Let's Encrypt hat harte
-# Rate-Limits (5 Fehlversuche pro Konto/Host/Stunde). Staging stellt ein nicht
-# vertrauenswuerdiges Zertifikat aus, hat aber grosszuegige Limits und beweist,
-# dass die HTTP-01-Challenge durchlaeuft.
+# ClusterIssuer sind clusterweit, nicht per kubectl apply sondern via apply-tls-issuer.sh anwenden (setzt "email").
+# Staging zuerst testen: Let's Encrypt Prod hat harte Rate-Limits, Staging nicht.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -36,9 +26,7 @@ spec:
     privateKeySecretRef:
       name: letsencrypt-prod-account-key
     solvers:
-      # HTTP-01: cert-manager legt fuer die Challenge temporaer einen eigenen
-      # Ingress unter /.well-known/acme-challenge/ an. Setzt voraus, dass die
-      # A-Records der Hosts auf die LoadBalancer-IP zeigen und Port 80 offen ist.
+      # HTTP-01: setzt voraus, dass die A-Records auf die LoadBalancer-IP zeigen und Port 80 offen ist.
       - http01:
           ingress:
             ingressClassName: nginx

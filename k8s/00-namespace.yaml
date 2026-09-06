@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: user-mgmt
-  labels:
-    app.kubernetes.io/part-of: user-mgmt-service

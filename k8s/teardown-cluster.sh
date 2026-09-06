@@ -1,19 +1,10 @@
 #!/usr/bin/env bash
-#
 # Baut den Cluster vollstaendig ab und stoppt damit die laufenden Kosten.
-#
-# Wichtig: LoadBalancer und Block-Storage-Volumes werden von Kubernetes
-# dynamisch angelegt und koennen beim Loeschen des Clusters als verwaiste
-# (weiterhin kostenpflichtige) Ressourcen zuruecklbleiben. Deshalb werden hier
-# zuerst die Kubernetes-Objekte entfernt, die sie halten, und anschliessend
-# explizit geprueft, ob wirklich nichts uebrig ist.
-#
+# LoadBalancer/Volumes werden dynamisch angelegt und muessen vor dem Cluster entfernt werden, sonst bleiben sie verwaist zurueck.
 set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-k8s-vscmodul}"
-# Beide Umgebungen (Aufgabe 5). Wird staging hier vergessen, bleibt dessen
-# PersistentVolumeClaim - und damit ein kostenpflichtiges Block-Volume -
-# zurueck, auch wenn prod sauber abgeraeumt ist.
+# Beide Umgebungen: sonst bleibt z.B. das Staging-PVC als kostenpflichtiges Volume zurueck.
 NAMESPACES=("user-mgmt" "user-mgmt-staging")
 
 info() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }

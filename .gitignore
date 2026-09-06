@@ -55,3 +55,8 @@ logs/
 node_modules/
 .next/
 next-env.d.ts
+
+# ================================
+# AI-maintained documentation
+# ================================
+.ai/

@@ -1,33 +1,19 @@
 #!/usr/bin/env bash
-#
-# Baut die komplette Infrastruktur von Grund auf neu auf:
-# DOKS-Cluster -> ingress-nginx -> cert-manager -> ArgoCD -> Host ermitteln ->
-# ArgoCD Application registrieren (GitOps aus helm/user-mgmt in diesem Repo).
-#
-# Idempotent: existiert der Cluster bereits, wird er weiterverwendet.
-#
-# Voraussetzung: doctl authentifiziert (doctl auth init), kubectl und helm installiert.
-#
+# Baut die Infrastruktur (Cluster, Ingress, cert-manager, ArgoCD) idempotent auf.
+# Voraussetzung: doctl authentifiziert, kubectl und helm installiert.
 set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-k8s-vscmodul}"
 REGION="${REGION:-fra1}"
 NODE_SIZE="${NODE_SIZE:-s-2vcpu-4gb}"
-# Zwei Nodes als Minimum, nicht einer (Aufgabe 6):
-# - prod faehrt mit minReplicas: 2, staging mit 1, dazu ein Surge-Pod waehrend
-#   eines Rolling Updates - das passt nicht mehr auf einen s-2vcpu-4gb.
-# - Ein Pod Disruption Budget ist auf einem einzelnen Node wirkungslos: ein
-#   "kubectl drain" nimmt dort zwangslaeufig alles mit.
-# MAX_NODES gibt dem Cluster-Autoscaler Luft, wenn der HPA ueber die Kapazitaet
-# von zwei Nodes hinaus skaliert. Ohne das waere die Node-Ebene die stille
-# Obergrenze der Pod-Ebene: der HPA zaehlt hoch, die Pods bleiben Pending.
+# 2 Nodes minimum: ein PDB waere auf einem einzigen Node wirkungslos.
+# MAX_NODES gibt dem Cluster-Autoscaler Luft, wenn der HPA ueber die Node-Kapazitaet hinaus skaliert.
 NODE_COUNT="${NODE_COUNT:-2}"
 MIN_NODES="${MIN_NODES:-2}"
 MAX_NODES="${MAX_NODES:-3}"
 NAMESPACE="user-mgmt"
 STAGING_NAMESPACE="user-mgmt-staging"
-# Muessen mit den Hosts in 06-ingress.yaml und dem Build-Arg in deploy.yml
-# uebereinstimmen.
+# Muessen mit ingress.hosts in helm/user-mgmt/values-prod.yaml uebereinstimmen.
 HOSTS=("lucavonsaal.com" "www.lucavonsaal.com")
 # ArgoCD-Dashboard, siehe k8s/argocd-values.yaml. Rein informativ fuer den
 # DNS-Check unten, an keiner anderen Stelle im Skript verdrahtet.
@@ -70,10 +56,7 @@ else
   ok "Cluster erstellt"
 fi
 
-# Autoscaling am Node-Pool. Bewusst als eigener Schritt statt im --node-pool
-# String von "cluster create": so greift es auch bei einem bereits
-# bestehenden Cluster, und "cluster create" akzeptiert dort ohnehin nur
-# name/size/count/tag/label/taint.
+# Eigener Schritt statt im --node-pool-String, damit es auch bei bereits bestehendem Cluster greift.
 POOL_ID=$(doctl kubernetes cluster node-pool list "${CLUSTER_NAME}" \
             --format ID --no-header | head -1)
 if [ -n "${POOL_ID}" ]; then
@@ -101,9 +84,7 @@ ok "ingress-nginx installiert"
 # ---------------------------------------------------------------------------
 info "cert-manager installieren"
 # ---------------------------------------------------------------------------
-# Muss vor dem Apply der Manifests laufen: 07-tls-issuer.yaml enthaelt einen
-# ClusterIssuer, dessen CRD erst von cert-manager mitgebracht wird. Ohne diesen
-# Schritt bricht "kubectl apply -f k8s/" mit "no matches for kind" ab.
+# Muss vor dem ClusterIssuer-Apply laufen: dessen CRD kommt erst mit cert-manager.
 helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
 helm repo update jetstack >/dev/null
 helm upgrade --install cert-manager jetstack/cert-manager \
@@ -115,15 +96,8 @@ ok "cert-manager installiert"
 # ---------------------------------------------------------------------------
 info "metrics-server installieren"
 # ---------------------------------------------------------------------------
-# Voraussetzung fuer den Horizontal Pod Autoscaler (Aufgabe 6): er liefert die
-# Metrics API, aus der der HPA CPU- und Speicherauslastung liest. Ohne ihn
-# steht der HPA dauerhaft auf "<unknown>" und skaliert nie.
-#
-# Aeltere DOKS-Images brachten metrics-server mit, das aktuelle (v1.36, Cilium)
-# nicht mehr - deshalb hier explizit.
-#
-# --kubelet-insecure-tls: die Kubelets stellen Zertifikate auf ihre interne IP
-# aus, die metrics-server nicht gegen die Cluster-CA verifizieren kann.
+# Voraussetzung fuer den HPA (Metrics API); ohne ihn bleibt die Auslastung "<unknown>".
+# --kubelet-insecure-tls, da Kubelet-Zertifikate nicht gegen die Cluster-CA verifizierbar sind.
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ >/dev/null 2>&1 || true
 helm repo update metrics-server >/dev/null
 helm upgrade --install metrics-server metrics-server/metrics-server \
@@ -137,9 +111,7 @@ ok "metrics-server installiert (kubectl top nodes zum Pruefen)"
 # ---------------------------------------------------------------------------
 info "ArgoCD installieren"
 # ---------------------------------------------------------------------------
-# Eigener, von der Applikation getrennter Namespace (Aufgabe 3). Die Werte in
-# argocd-values.yaml schalten TLS-Terminierung an den Ingress durch (server.insecure)
-# und aktivieren dessen Ingress auf argocd.lucavonsaal.com.
+# Eigener Namespace, getrennt von der Applikation; TLS wird am Ingress terminiert (server.insecure).
 helm repo add argo https://argoproj.github.io/argo-helm >/dev/null 2>&1 || true
 helm repo update argo >/dev/null
 helm upgrade --install argocd argo/argo-cd \
@@ -165,10 +137,7 @@ ok "LoadBalancer-IP: ${LB_IP}"
 # ---------------------------------------------------------------------------
 info "DNS pruefen"
 # ---------------------------------------------------------------------------
-# Der Host ist seit der TLS-Umstellung fest in 06-ingress.yaml und deploy.yml
-# verdrahtet, es wird nichts mehr per sed nachgezogen. Die A-Records liegen bei
-# einem externen Registrar (nicht in der DigitalOcean-DNS-Zone) und muessen
-# nach einem Cluster-Neuaufbau manuell auf die neue IP gezeigt werden.
+# A-Records liegen extern (nicht bei DigitalOcean) und muessen nach Neuaufbau manuell nachgezogen werden.
 # Ohne korrektes DNS scheitert die HTTP-01-Challenge von Let's Encrypt.
 DNS_OK=1
 for host in "${HOSTS[@]}"; do
@@ -197,9 +166,7 @@ fi
 # ---------------------------------------------------------------------------
 info "ClusterIssuer anwenden"
 # ---------------------------------------------------------------------------
-# Cluster-weite Ressource, unabhaengig vom GitOps-Ablauf unten. Braucht die
-# ACME-Adresse aus .env, siehe apply-tls-issuer.sh. Ein fehlender Eintrag darf
-# den Rest des Aufbaus nicht abbrechen, deshalb das if/else statt "||".
+# Fehlender ACME_EMAIL-Eintrag darf den restlichen Aufbau nicht abbrechen, deshalb if/else statt "||".
 if "${K8S_DIR}/apply-tls-issuer.sh"; then
   ok "ClusterIssuer angewendet"
 else
@@ -210,13 +177,7 @@ fi
 # ---------------------------------------------------------------------------
 info "Applikationen via ArgoCD ausrollen (Prod + Staging)"
 # ---------------------------------------------------------------------------
-# Die statischen Manifests k8s/0[0-6]-*.yaml (Aufgabe 1) werden bewusst NICHT
-# mehr angewendet: ArgoCD deployt dieselbe Anwendung ueber den Helm Chart
-# unter helm/user-mgmt in zwei getrennte Namespaces (Prod/Staging).
-#
-# Das Secret wird bewusst nicht vom Chart erzeugt (secrets.create=false, siehe
-# helm/user-mgmt/values.yaml). Es entsteht deshalb hier, einmalig pro
-# Namespace, aus der lokalen .env.
+# Secret entsteht hier statt im Chart (secrets.create=false), damit es nicht in Git landet.
 [ -f "${ENV_FILE}" ] || { echo "FEHLER: ${ENV_FILE} nicht gefunden"; exit 1; }
 env_value() { grep -E "^${1}=" "${ENV_FILE}" | cut -d= -f2-; }
 

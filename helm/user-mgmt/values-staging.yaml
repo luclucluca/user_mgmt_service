@@ -4,41 +4,20 @@ ingress:
   tls:
     clusterIssuer: letsencrypt-staging
 
-# ---------------------------------------------------------------------------
-# Autoscaling (Aufgabe 6)
-# ---------------------------------------------------------------------------
-# Staging faehrt bewusst schmaler als Prod: kein Hochverfuegbarkeitsanspruch,
-# und beide Umgebungen teilen sich denselben Node. minReplicas: 1 haelt den
-# Grundverbrauch klein und laesst dem Prod-HPA Platz zum Skalieren.
+# Staging faehrt schmaler als Prod: minReplicas 1 haelt den Grundverbrauch klein.
 backend:
   autoscaling:
     minReplicas: 1
     maxReplicas: 2
 
-# ---------------------------------------------------------------------------
-# ResourceQuota
-# ---------------------------------------------------------------------------
-# Die Quota muss den *Maximalausbau* abdecken, nicht den Normalbetrieb:
-# maxReplicas plus einen zusaetzlichen Pod fuer das Rolling Update (maxSurge=1).
-# Ist sie zu knapp, skaliert der HPA zwar, die Pods scheitern aber still an
-# "exceeded quota" - der haeufigste Grund fuer einen HPA, der nichts bewirkt.
-#
-# Rechnung (2 Backend-Replicas max + 1 Surge = 3 x 448Mi/200m):
-#   requests.cpu    3x200m + 50m + 50m  = 700m   -> 1
-#   requests.memory 3x448Mi + 128 + 128 = 1600Mi -> 2Gi
-#   limits.cpu      3x1000m + 250 + 250 = 3500m  -> 4
-#   limits.memory   3x1Gi + 256 + 256   = 3.5Gi  -> 4Gi
+# Muss maxReplicas + 1 Surge-Pod abdecken, sonst scheitert der HPA still an "exceeded quota".
 resourceQuota:
   requestsCpu: "1"
   requestsMemory: 2Gi
   limitsCpu: "4"
   limitsMemory: 4Gi
 
-# Backend-Ressourcen bleiben auf Groesse des Basis-values.yaml (= Prod): eine
-# JVM/Spring-Boot-App braucht beim Start ausreichend CPU zum Class-Loading,
-# sonst faellt die startupProbe wiederholt aus (Container wird vor
-# vollstaendigem Hochfahren gekillt). Nur Frontend und Postgres sind reduziert.
-
+# Backend bleibt auf Prod-Groesse: zu wenig CPU beim Start laesst die startupProbe wiederholt fehlschlagen.
 frontend:
   resources:
     requests:

@@ -21,21 +21,10 @@ metadata:
   labels:
     {{- include "user-mgmt.componentLabels" (dict "ctx" $ "component" "frontend") | nindent 4 }}
 spec:
-  # Kein "replicas" im Manifest, solange der HPA aktiv ist. Sonst schreibt
-  # jeder "helm upgrade" bzw. jeder ArgoCD-Sync mit selfHeal=true die vom HPA
-  # gesetzte Replica-Zahl auf den Chart-Wert zurueck - Autoscaler und GitOps
-  # wuerden sich dauerhaft gegenseitig ueberschreiben.
+  # Kein "replicas", solange der HPA aktiv ist - sonst ueberschreiben sich Autoscaler und GitOps gegenseitig.
   {{- if not .Values.frontend.autoscaling.enabled }}
   replicas: {{ .Values.frontend.replicaCount }}
   {{- end }}
-  # RollingUpdate mit maxUnavailable 0 - waehrend eines Updates darf nie eine
-  # Replica unter den Sollstand fallen. Kubernetes startet zuerst den neuen
-  # Pod, wartet dessen readinessProbe ab und entfernt erst dann den alten,
-  # damit ist das Deployment unterbrechungsfrei.
-  #
-  # maxSurge 1 begrenzt den dabei zusaetzlich benoetigten Platz auf genau
-  # einen Pod. Wichtig auf einem knappen Node - passt dieser eine Pod nicht
-  # mehr, bleibt das Update haengen (Pending) statt durchzulaufen.
   strategy:
     type: {{ .Values.frontend.strategy.type }}
     {{- if eq .Values.frontend.strategy.type "RollingUpdate" }}
@@ -58,8 +47,7 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.frontend.service.port }}
-          # Hinweis: NEXT_PUBLIC_API_URL wird von Next.js zur Build-Zeit ins
-          # Bundle eingebacken und laesst sich hier zur Laufzeit nicht aendern.
+          # NEXT_PUBLIC_API_URL ist zur Build-Zeit ins Bundle eingebacken, hier nicht mehr aenderbar.
           startupProbe:
             tcpSocket:
               port: http

@@ -1,14 +1,4 @@
-{{/*
-Horizontal Pod Autoscaler (Aufgabe 6).
-
-Der HPA vergleicht den tatsaechlichen Verbrauch eines Pods mit dessen
-*request* - nicht mit dem Limit. Ohne deklarierte requests kann er keine
-Auslastung berechnen und bleibt auf "<unknown>" stehen. Deshalb sind
-requests/limits im Chart fuer jede Komponente verbindlich gesetzt.
-
-Voraussetzung im Cluster ist der metrics-server (siehe k8s/setup-cluster.sh):
-er liefert die Metrics API, aus der der HPA liest.
-*/}}
+{{/* HPA vergleicht Verbrauch gegen "requests" (nicht limits); braucht metrics-server im Cluster. */}}
 {{- range $component := list "backend" "frontend" }}
 {{- $cfg := index $.Values $component }}
 {{- if $cfg.autoscaling.enabled }}
@@ -46,9 +36,7 @@ spec:
       # Kurzes Fenster: bei Lastspitzen soll schnell reagiert werden.
       stabilizationWindowSeconds: {{ $cfg.autoscaling.behavior.scaleUp.stabilizationWindowSeconds }}
     scaleDown:
-      # Langes Fenster: verhindert "Flapping", also staendiges Hoch- und
-      # Runterskalieren bei schwankender Last. Der HPA wartet, bis die
-      # Entlastung ueber diesen Zeitraum stabil war.
+      # Langes Fenster gegen Flapping bei schwankender Last.
       stabilizationWindowSeconds: {{ $cfg.autoscaling.behavior.scaleDown.stabilizationWindowSeconds }}
 {{- end }}
 {{- end }}

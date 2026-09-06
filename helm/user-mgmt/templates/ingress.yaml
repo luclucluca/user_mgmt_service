@@ -1,17 +1,7 @@
 {{- if .Values.ingress.enabled -}}
 {{- $frontendSvc := include "user-mgmt.componentName" (dict "ctx" $ "component" "frontend") -}}
 {{- $backendSvc := include "user-mgmt.componentName" (dict "ctx" $ "component" "backend") -}}
-{{/*
-Bewusst zwei Ingress-Objekte: "rewrite-target" ist eine Annotation auf
-Ingress-Ebene und gilt damit fuer jede Pfad-Regel des Objekts. Laegen beide
-Regeln zusammen, haette die Regel "/" keine Capture-Group, $2 waere leer und
-jede Frontend-URL wuerde auf "/" umgeschrieben.
-
-Die cert-manager-Annotation steht nur am Web-Objekt. Zwei Objekte mit derselben
-Annotation und demselben secretName wuerden zwei konkurrierende
-Certificate-Ressourcen auf dasselbe Secret erzeugen; das API-Objekt
-referenziert das Secret nur.
-*/}}
+{{/* Zwei Ingress-Objekte: "rewrite-target" gilt sonst fuer alle Pfade des Objekts, auch fuer "/". */}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -19,15 +9,7 @@ metadata:
   labels:
     {{- include "user-mgmt.labels" . | nindent 4 }}
   annotations:
-    # Lastverteilung (Aufgabe 6). ingress-nginx verteilt ohne Session Affinity
-    # per Round Robin - und zwar ueber die Endpoints des Service. Ein Endpoint
-    # entsteht erst, wenn die readinessProbe des Pods erfolgreich ist, und
-    # verschwindet sofort wieder, sobald sie fehlschlaegt. Damit trifft
-    # Traffic ausschliesslich bereite Replicas, ohne dass es dafuer eine
-    # eigene Konfiguration braucht.
-    #
-    # Der Default wird trotzdem explizit gesetzt - er ist damit dokumentiert
-    # und gegen eine geaenderte Controller-Konfiguration abgesichert.
+    # Verteilt per Round Robin nur ueber Endpoints mit erfolgreicher readinessProbe.
     nginx.ingress.kubernetes.io/load-balance: {{ .Values.ingress.loadBalance | quote }}
     {{- if .Values.ingress.tls.enabled }}
     cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.clusterIssuer | quote }}

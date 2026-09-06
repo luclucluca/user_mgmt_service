@@ -1,29 +1,14 @@
 #!/usr/bin/env bash
-#
-# Wendet die ClusterIssuer aus 07-tls-issuer.yaml an und setzt dabei die
-# ACME-Adresse aus der lokalen .env ein.
-#
-# Warum ueberhaupt ein Skript: 07-tls-issuer.yaml ist versioniert und enthaelt
-# deshalb nur den Platzhalter PLACEHOLDER_ACME_EMAIL — eine Personendaten-Adresse
-# gehoert nicht in ein eingechecktes Manifest. Die Ersetzung laeuft ueber stdin,
-# es entsteht also keine gerenderte Datei auf der Platte.
-#
+# Wendet die ClusterIssuer aus 07-tls-issuer.yaml an, ACME-Adresse per stdin aus .env eingesetzt (kein Klartext im Git).
 # Voraussetzung: cert-manager ist installiert (bringt die ClusterIssuer-CRD mit).
-#
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST="${REPO_ROOT}/k8s/07-tls-issuer.yaml"
 ENV_FILE="${REPO_ROOT}/.env"
 
-# Optional: Kontext erzwingen, damit der Issuer nicht versehentlich in einem
-# anderen Cluster landet. ClusterIssuer sind clusterweit, ein Fehlgriff waere
-# nicht auf einen Namespace begrenzt.
-#
-# Kein Array fuer die kubectl-Argumente: "${arr[@]}" liefert unter macOS'
-# vorinstalliertem bash 3.2 (kein bash 4.4+) bei einem LEEREN Array unter
-# "set -u" ein einzelnes leeres String-Argument statt null Argumenten - das
-# haette kubectl als ungueltiges Kommando interpretiert.
+# Optional: Kontext erzwingen, ClusterIssuer sind clusterweit und ein Fehlgriff nicht auf einen Namespace begrenzt.
+# Kein Array: leere Arrays liefern unter macOS' bash 3.2 mit "set -u" ein leeres String-Argument statt keinem.
 KUBE_CONTEXT="${KUBE_CONTEXT:-}"
 kc() {
   if [ -n "${KUBE_CONTEXT}" ]; then

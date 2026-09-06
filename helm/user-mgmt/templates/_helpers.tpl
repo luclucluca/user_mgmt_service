@@ -1,22 +1,11 @@
-{{/*
-Wiederverwendbare Template-Funktionen.
-
-Die komponentenbezogenen Helper erwarten ein dict mit zwei Schluesseln:
-  ctx       - der Root-Kontext ($)
-  component - "backend" | "frontend" | "postgres"
-Aufruf z.B.:
-  {{- include "user-mgmt.componentLabels" (dict "ctx" $ "component" "backend") | nindent 4 }}
-*/}}
+{{/* Komponentenbezogene Helper erwarten ein dict {ctx: $, component: "backend|frontend|postgres"}. */}}
 
 {{/* Basisname des Charts, per nameOverride ueberschreibbar. */}}
 {{- define "user-mgmt.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{/*
-Voll qualifizierter Release-Name. Enthaelt der Release-Name den Chart-Namen
-bereits, wird er nicht doppelt vorangestellt.
-*/}}
+{{/* Voll qualifizierter Release-Name, ohne Chart-Namen doppelt voranzustellen. */}}
 {{- define "user-mgmt.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
@@ -49,19 +38,12 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
-{{/*
-Ressourcenname einer Komponente, z.B. "user-mgmt-backend".
-Wird sowohl fuer Deployment als auch fuer den zugehoerigen Service verwendet,
-damit Service-DNS und Workload garantiert zusammenpassen.
-*/}}
+{{/* Ressourcenname einer Komponente, z.B. "user-mgmt-backend" (Deployment und Service). */}}
 {{- define "user-mgmt.componentName" -}}
 {{- printf "%s-%s" (include "user-mgmt.fullname" .ctx) .component | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{/*
-Selector-Labels einer Komponente. Muessen ueber die Lebensdauer eines
-Deployments stabil bleiben - deshalb bewusst ohne Version und Chart.
-*/}}
+{{/* Selector-Labels muessen ueber die Lebensdauer des Deployments stabil bleiben, daher ohne Version/Chart. */}}
 {{- define "user-mgmt.componentSelectorLabels" -}}
 app.kubernetes.io/name: {{ include "user-mgmt.name" .ctx }}
 app.kubernetes.io/instance: {{ .ctx.Release.Name }}
@@ -76,12 +58,7 @@ app.kubernetes.io/version: {{ .ctx.Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .ctx.Release.Service }}
 {{- end }}
 
-{{/*
-Vollstaendige Image-Referenz "registry/repository/name:tag".
-"registry" und "repository" fallen auf die globalen Werte zurueck, wenn die
-Komponente sie nicht selbst setzt - so liegen Backend und Frontend in GHCR,
-PostgreSQL aber in Docker Hub.
-*/}}
+{{/* Image-Referenz "registry/repository/name:tag"; registry/repository fallen auf globale Werte zurueck. */}}
 {{- define "user-mgmt.image" -}}
 {{- $global := .ctx.Values.image -}}
 {{- $img := .image -}}
@@ -90,11 +67,7 @@ PostgreSQL aber in Docker Hub.
 {{- printf "%s/%s/%s:%s" $registry $repository $img.name (toString $img.tag) -}}
 {{- end }}
 
-{{/*
-JDBC-URL der Datenbank. Baut den Hostnamen aus dem getemplateten Servicenamen,
-damit er nicht in der ConfigMap hartcodiert werden muss und auch bei
-abweichendem Release-Namen korrekt bleibt.
-*/}}
+{{/* JDBC-URL, Hostname aus dem getemplateten Servicenamen, damit nichts hartcodiert werden muss. */}}
 {{- define "user-mgmt.datasourceUrl" -}}
 {{- $svc := include "user-mgmt.componentName" (dict "ctx" . "component" "postgres") -}}
 {{- printf "jdbc:postgresql://%s:%v/%s" $svc (.Values.postgres.service.port | int) .Values.config.postgresDb -}}
@@ -105,10 +78,7 @@ abweichendem Release-Namen korrekt bleibt.
 {{- printf "%s-config" (include "user-mgmt.fullname" .) }}
 {{- end }}
 
-{{/*
-Name des Secrets. Wird es nicht vom Chart erzeugt (secrets.create=false), kann
-ueber secrets.existingSecret ein abweichender Name angegeben werden.
-*/}}
+{{/* Name des Secrets; ueber secrets.existingSecret abweichend benennbar, wenn create=false. */}}
 {{- define "user-mgmt.secretName" -}}
 {{- if .Values.secrets.existingSecret -}}
 {{- .Values.secrets.existingSecret -}}

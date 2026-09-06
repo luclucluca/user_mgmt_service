@@ -5,19 +5,7 @@ ingress:
   tls:
     clusterIssuer: letsencrypt-prod
 
-# ---------------------------------------------------------------------------
-# ResourceQuota
-# ---------------------------------------------------------------------------
-# Muss den Maximalausbau des HPA decken: maxReplicas=4 plus einen Surge-Pod
-# aus dem Rolling Update, also 5 Backend-Pods gleichzeitig.
-#
-#   requests.cpu    5x200m + 100m + 100m  = 1200m  -> 2
-#   requests.memory 5x448Mi + 192 + 128   = 2560Mi -> 4Gi
-#   limits.cpu      5x1000m + 500m + 500m = 6000m  -> 6   (vorher 4 = zu knapp)
-#   limits.memory   5x1Gi + 512Mi + 512Mi = 6Gi    -> 8Gi
-#
-# limits.cpu war mit "4" unter dem Bedarf: die Quota haette das Skalieren ab
-# der vierten Replica blockiert, obwohl der HPA korrekt konfiguriert ist.
+# Muss maxReplicas=4 + 1 Surge-Pod (5 Backend-Pods gleichzeitig) abdecken.
 resourceQuota:
   requestsCpu: "2"
   requestsMemory: 4Gi

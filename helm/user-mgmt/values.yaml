@@ -24,17 +24,12 @@ backend:
     # minReplicas: 2 statt 1 - erst ab zwei Replicas ist die Applikation
     # hochverfuegbar und ein PDB ueberhaupt wirksam.
     minReplicas: 2
-    # Obergrenze aus der Node-Kapazitaet abgeleitet, nicht frei gegriffen:
-    # 4 x 320Mi request = 1.25Gi allein fuers Backend. Wird maxReplicas hoeher
-    # gesetzt als Node bzw. ResourceQuota hergeben, skaliert der HPA zwar, die
-    # zusaetzlichen Pods bleiben aber Pending.
+    # Obergrenze an Node-Kapazitaet/ResourceQuota ausgerichtet, sonst bleiben Pods Pending.
     maxReplicas: 4
     # Bezugsgroesse ist der CPU-*request* (200m), nicht das Limit:
     # skaliert wird ab 140m tatsaechlicher Last pro Pod.
     targetCPUUtilizationPercentage: 70
-    # Speicher bewusst nicht als Skalierungsmetrik: eine JVM gibt einmal
-    # allozierten Heap kaum zurueck, der Wert bliebe dauerhaft hoch und
-    # wuerde ein Herunterskalieren verhindern.
+    # Speicher bewusst keine Skalierungsmetrik: JVM-Heap sinkt kaum, wuerde Runterskalieren verhindern.
     targetMemoryUtilizationPercentage: null
     behavior:
       scaleUp:
@@ -60,19 +55,7 @@ backend:
     tag: d9badc27cff8bb1f0e6de8f20e47a8e5b8a89449
   service:
     port: 8080
-  # Zweimal gemessen (kubectl top): ~215Mi im Leerlauf, ~430Mi unter Last.
-  # Massgeblich ist der zweite Wert - die JVM dimensioniert ihren Heap am
-  # Container-*Limit* (1Gi), nicht am Request, und gibt einmal allozierten
-  # Speicher nicht wieder ans Betriebssystem zurueck.
-  #
-  # 320Mi (aus der reinen Leerlaufmessung) waren zu niedrig: der Node war unter
-  # Last real zu 86% belegt bei nur 69% Reservierung. Pods, die dauerhaft mehr
-  # verbrauchen als sie reservieren, sind bei Speicherdruck die ersten
-  # Eviction-Kandidaten.
-  #
-  # Alternative waere ein kleineres Limit, damit die JVM von sich aus weniger
-  # Heap nimmt - das erkauft man sich aber mit OOM-Risiko unter Spitzenlast.
-  # Die ehrliche Reservierung ist der sicherere Weg.
+  # Gemessen (kubectl top): ~430Mi unter Last, JVM dimensioniert Heap am Limit, nicht am Request.
   resources:
     requests:
       cpu: 200m
@@ -96,9 +79,7 @@ backend:
 # eingebacken (siehe frontend/Dockerfile) und laesst sich hier nicht setzen.
 frontend:
   replicaCount: 1
-  # Aufgabe 6 verlangt Autoscaling ausdruecklich fuer das Backend. Das Frontend
-  # liefert statische Seiten aus und ist nicht der Engpass - der Block ist
-  # vorbereitet, aber abgeschaltet.
+  # Vorbereitet, aber abgeschaltet: Frontend liefert nur statische Seiten, ist nicht der Engpass.
   autoscaling:
     enabled: false
     minReplicas: 2
@@ -188,18 +169,8 @@ config:
 # Sensitive Konfiguration -> Secret
 # ---------------------------------------------------------------------------
 secrets:
-  # false: das Secret wird NICHT vom Chart verwaltet. Es muss einmalig pro
-  # Namespace per kubectl angelegt werden. Notwendig fuer GitOps, weil ArgoCD
-  # exakt das deployt, was im (oeffentlichen) Ops-Repository steht - Passwoerter
-  # duerfen dort nicht auftauchen.
-  #
-  #   kubectl create secret generic user-mgmt-secret -n user-mgmt \
-  #     --from-literal=SPRING_DATASOURCE_USERNAME=postgres \
-  #     --from-literal=SPRING_DATASOURCE_PASSWORD='<passwort>' \
-  #     --from-literal=JWT_SECRET='<base64-schluessel>'
-  #
-  # true: der Chart erzeugt das Secret aus den Werten unten. Nur sinnvoll bei
-  # lokalem Deployment mit --set, nicht im GitOps-Ablauf.
+  # false: Secret wird nicht vom Chart verwaltet, sondern einmalig per kubectl angelegt (siehe .ai/KUBERNETES.md).
+  # true nur fuer lokales Deployment mit --set, nicht im GitOps-Ablauf.
   create: false
   # Name eines bereits bestehenden Secrets. Leer = "<fullname>-secret".
   existingSecret: ""
@@ -213,24 +184,19 @@ secrets:
 ingress:
   enabled: true
   className: nginx
-  # Verteilalgorithmus des Ingress Controllers ueber die ready Endpoints.
-  # "round_robin" ist der Default von ingress-nginx und hier bewusst
-  # ausgeschrieben (siehe Kommentar in templates/ingress.yaml).
+  # Verteilalgorithmus ueber die ready Endpoints; round_robin ist der ingress-nginx-Default.
   loadBalance: round_robin
   hosts:
     - lucavonsaal.com
     - www.lucavonsaal.com
   api:
-    # Nur /api/users, nicht /api: das Frontend hat eigene Next.js Route Handler
-    # unter /api/login, /api/me und /api/logout. Eine Regel auf /api wuerde die
-    # ans Backend schicken, das nur /users/** kennt.
+    # Nur /api/users: /api/login, /api/me, /api/logout sind Next.js Route Handler im Frontend.
     path: /api/users(/|$)(.*)
     rewriteTarget: /users$1$2
   tls:
     enabled: true
     secretName: user-mgmt-tls
-    # Der ClusterIssuer selbst ist clusterweite Infrastruktur und wird nicht vom
-    # Chart verwaltet, sondern von k8s/setup-cluster.sh angelegt.
+    # Clusterweite Infrastruktur, nicht vom Chart verwaltet, sondern von k8s/setup-cluster.sh.
     clusterIssuer: letsencrypt-prod
 # ---------------------------------------------------------------------------
 # ResourceQuota (pro Namespace/Umgebung, siehe values-staging.yaml/values-prod.yaml)
@@ -242,9 +208,7 @@ resourceQuota:
   limitsCpu: "2"
   limitsMemory: 4Gi
 # ---------------------------------------------------------------------------
-# NetworkPolicy: erlaubt eingehenden Traffic nur aus dem eigenen Namespace und
-# aus dem Ingress-Controller-Namespace, isoliert damit von anderen Namespaces
-# (z.B. der jeweils anderen Umgebung im selben Cluster).
+# NetworkPolicy: erlaubt Traffic nur aus eigenem Namespace und dem Ingress-Controller.
 # ---------------------------------------------------------------------------
 networkPolicy:
   enabled: true
