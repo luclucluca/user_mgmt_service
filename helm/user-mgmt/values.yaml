@@ -21,9 +21,10 @@ backend:
   # -------------------------------------------------------------------------
   autoscaling:
     enabled: true
-    # minReplicas: 2 statt 1 - erst ab zwei Replicas ist die Applikation
-    # hochverfuegbar und ein PDB ueberhaupt wirksam.
-    minReplicas: 2
+    # 1 statt 2 (siehe DECISION-016): Ressourcendruck durch den zusaetzlichen
+    # Monitoring-Stack auf dem 2-Node-Wegwerf-Cluster. PDB bleibt wirkungslos,
+    # solange nur eine Replica laeuft.
+    minReplicas: 1
     # Obergrenze an Node-Kapazitaet/ResourceQuota ausgerichtet, sonst bleiben Pods Pending.
     maxReplicas: 4
     # Bezugsgroesse ist der CPU-*request* (200m), nicht das Limit:
