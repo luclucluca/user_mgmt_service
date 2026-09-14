@@ -52,12 +52,14 @@ alertmanager:
 
 grafana:
   resources:
+    # 256Mi Limit fuehrte zu OOMKilled beim Start (Grafana 13.x installiert beim
+    # ersten Start mehrere Bundled-Plugins und braucht dafuer kurzzeitig mehr Speicher).
     requests:
       cpu: 50m
-      memory: 128Mi
+      memory: 192Mi
     limits:
-      cpu: 200m
-      memory: 256Mi
+      cpu: 300m
+      memory: 512Mi
   # Enthaelt u.a. "Kubernetes / Compute Resources / Pod" - deckt die CPU/Memory-Ueberwachung pro Pod ab.
   defaultDashboardsEnabled: true
   sidecar:
