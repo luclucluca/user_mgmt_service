@@ -1,0 +1,84 @@
+# Grafana-Dashboard fuer user_mgmt_service. Eigenes Manifest statt "grafana.dashboards"
+# in monitoring-values.yaml, weil der Chart dabei das Label "grafana_dashboard=1" nicht
+# setzt und der Sidecar die ConfigMap dadurch nie findet (siehe DECISION-014, Nachtrag).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-user-mgmt-backend
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  user-mgmt-backend.json: |
+    {
+      "title": "user_mgmt_service - Backend",
+      "uid": "user-mgmt-backend",
+      "tags": ["user-mgmt"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {},
+            "hide": 0
+          },
+          {
+            "name": "namespace",
+            "type": "query",
+            "datasource": { "type": "prometheus", "uid": "$datasource" },
+            "query": "label_values(http_server_requests_seconds_count{application=\"user-mgmt-backend\"}, namespace)",
+            "refresh": 2,
+            "current": {}
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Request Rate",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count{application=\"user-mgmt-backend\",namespace=\"$namespace\"}[5m])) by (uri)",
+              "legendFormat": "{{uri}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Response Time (avg)",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_sum{application=\"user-mgmt-backend\",namespace=\"$namespace\"}[5m])) / sum(rate(http_server_requests_seconds_count{application=\"user-mgmt-backend\",namespace=\"$namespace\"}[5m]))",
+              "legendFormat": "avg latency"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Error Rate (5xx)",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count{application=\"user-mgmt-backend\",namespace=\"$namespace\",outcome=\"SERVER_ERROR\"}[5m])) / sum(rate(http_server_requests_seconds_count{application=\"user-mgmt-backend\",namespace=\"$namespace\"}[5m]))",
+              "legendFormat": "error rate"
+            }
+          ]
+        }
+      ]
+    }

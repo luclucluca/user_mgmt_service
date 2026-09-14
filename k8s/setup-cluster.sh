@@ -117,6 +117,7 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
   --namespace monitoring --create-namespace \
   -f "${K8S_DIR}/monitoring-values.yaml" \
   --wait --timeout 10m >/dev/null
+kubectl apply -f "${K8S_DIR}/grafana-dashboard-user-mgmt-backend.yaml" >/dev/null
 ok "kube-prometheus-stack installiert"
 
 # ---------------------------------------------------------------------------
