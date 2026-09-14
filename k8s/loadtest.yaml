@@ -1,4 +1,5 @@
-# Lasttest fuer den HPA-Nachweis (Aufgabe 6), bewusst nicht im Helm Chart (sonst wuerde ArgoCD ihn dauerhaft verwalten).
+# Lasttest fuer den HPA-Nachweis (Orchestrierung Aufgabe 6, wiederverwendet fuer Observability
+# Aufgabe 2 Chaos Testing). Bewusst nicht im Helm Chart (sonst wuerde ArgoCD ihn dauerhaft verwalten).
 # Anwenden: kubectl apply -f k8s/loadtest.yaml -n user-mgmt; beobachten: kubectl get hpa,pods -n user-mgmt -w
 ---
 apiVersion: v1
@@ -17,8 +18,12 @@ data:
         { duration: '4m', target: 20 },   // Last halten, HPA skaliert hoch
         { duration: '30s', target: 0 },   // abschalten
       ],
-      // Fehlerhafte Logins sind hier der Normalfall, keine Schwellwerte noetig.
-      thresholds: {},
+      thresholds: {
+        // Verfuegbarkeits-Nachweis waehrend des Skalierungsvorgangs (Aufgabe 2):
+        // mind. 99% der Requests muessen ueberhaupt eine HTTP-Antwort bekommen,
+        // unabhaengig vom Statuscode (401/403 ist hier der erwartete Normalfall).
+        checks: ['rate>0.99'],
+      },
     };
 
     // Ueber den ClusterIP-Service statt Ingress, damit DNS/TLS den Test nicht verfaelschen.
