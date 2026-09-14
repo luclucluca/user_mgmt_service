@@ -60,3 +60,13 @@ next-env.d.ts
 # AI-maintained documentation
 # ================================
 .ai/
+
+# ================================
+# Terraform
+# ================================
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+terraform/*.tfvars.json
+!terraform/*.tfvars.example
