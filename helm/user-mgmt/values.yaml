@@ -212,7 +212,10 @@ resourceQuota:
 # ---------------------------------------------------------------------------
 networkPolicy:
   enabled: true
-  allowFromNamespace: ingress-nginx
+  # monitoring: damit Prometheus (Namespace "monitoring") /actuator/prometheus scrapen kann.
+  allowFromNamespaces:
+    - ingress-nginx
+    - monitoring
 # ---------------------------------------------------------------------------
 # Observability (Aufgabe 1): ServiceMonitor + PrometheusRule fuer das Backend.
 # Setzt einen laufenden kube-prometheus-stack voraus (k8s/monitoring-values.yaml).

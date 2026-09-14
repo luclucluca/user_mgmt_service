@@ -12,8 +12,10 @@ spec:
   ingress:
     - from:
         - podSelector: {}
+    {{- range .Values.networkPolicy.allowFromNamespaces }}
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.networkPolicy.allowFromNamespace | quote }}
+              kubernetes.io/metadata.name: {{ . | quote }}
+    {{- end }}
 {{- end }}
