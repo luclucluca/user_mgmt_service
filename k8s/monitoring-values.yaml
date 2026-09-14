@@ -1,0 +1,143 @@
+# Werte fuer kube-prometheus-stack (Helm Chart prometheus-community/kube-prometheus-stack),
+# angewendet von setup-cluster.sh im Namespace "monitoring".
+
+prometheus:
+  prometheusSpec:
+    # nil bedeutet sonst "nur ServiceMonitor/PrometheusRule mit Release-Label" - hier bewusst
+    # alle Namespaces/Labels zulassen, damit die Objekte aus helm/user-mgmt gefunden werden.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorNamespaceSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    ruleNamespaceSelector: {}
+    # Wegwerf-Cluster fuer eine Modulaufgabe - kurze Retention reicht.
+    retention: 7d
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  config:
+    route:
+      receiver: webhook-notifications
+      group_by: ["alertname", "namespace"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 3h
+      routes:
+        # Watchdog ist ein staendig feuernder Selbsttest-Alert von kube-prometheus-stack, kein echter Fehlerzustand.
+        - receiver: "null"
+          matchers:
+            - alertname = "Watchdog"
+    receivers:
+      - name: "null"
+      - name: webhook-notifications
+        webhook_configs:
+          # Test-Endpunkt (webhook.site) fuer die Modulabgabe - keine sensiblen Daten im Alert-Payload.
+          - url: https://webhook.site/fe9c28ea-889b-4f5f-b923-134924a813f3
+            send_resolved: true
+
+grafana:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  # Enthaelt u.a. "Kubernetes / Compute Resources / Pod" - deckt die CPU/Memory-Ueberwachung pro Pod ab.
+  defaultDashboardsEnabled: true
+  sidecar:
+    dashboards:
+      # Damit ein spaeteres eigenes Dashboard-ConfigMap (Label grafana_dashboard=1) auch aus
+      # user-mgmt/user-mgmt-staging gefunden wird, nicht nur aus dem monitoring-Namespace.
+      searchNamespace: ALL
+  dashboards:
+    default:
+      user-mgmt-backend:
+        json: |
+          {
+            "title": "user_mgmt_service - Backend",
+            "uid": "user-mgmt-backend",
+            "tags": ["user-mgmt"],
+            "timezone": "browser",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "30s",
+            "time": { "from": "now-1h", "to": "now" },
+            "templating": {
+              "list": [
+                {
+                  "name": "datasource",
+                  "type": "datasource",
+                  "query": "prometheus",
+                  "current": {},
+                  "hide": 0
+                },
+                {
+                  "name": "namespace",
+                  "type": "query",
+                  "datasource": { "type": "prometheus", "uid": "$datasource" },
+                  "query": "label_values(http_server_requests_seconds_count{application=\"user-mgmt-backend\"}, namespace)",
+                  "refresh": 2,
+                  "current": {}
+                }
+              ]
+            },
+            "panels": [
+              {
+                "id": 1,
+                "title": "Request Rate",
+                "type": "timeseries",
+                "datasource": { "type": "prometheus", "uid": "$datasource" },
+                "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+                "targets": [
+                  {
+                    "expr": "sum(rate(http_server_requests_seconds_count{application=\"user-mgmt-backend\",namespace=\"$namespace\"}[5m])) by (uri)",
+                    "legendFormat": "{{uri}}"
+                  }
+                ]
+              },
+              {
+                "id": 2,
+                "title": "Response Time (avg)",
+                "type": "timeseries",
+                "datasource": { "type": "prometheus", "uid": "$datasource" },
+                "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+                "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+                "targets": [
+                  {
+                    "expr": "sum(rate(http_server_requests_seconds_sum{application=\"user-mgmt-backend\",namespace=\"$namespace\"}[5m])) / sum(rate(http_server_requests_seconds_count{application=\"user-mgmt-backend\",namespace=\"$namespace\"}[5m]))",
+                    "legendFormat": "avg latency"
+                  }
+                ]
+              },
+              {
+                "id": 3,
+                "title": "Error Rate (5xx)",
+                "type": "timeseries",
+                "datasource": { "type": "prometheus", "uid": "$datasource" },
+                "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+                "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+                "targets": [
+                  {
+                    "expr": "sum(rate(http_server_requests_seconds_count{application=\"user-mgmt-backend\",namespace=\"$namespace\",outcome=\"SERVER_ERROR\"}[5m])) / sum(rate(http_server_requests_seconds_count{application=\"user-mgmt-backend\",namespace=\"$namespace\"}[5m]))",
+                    "legendFormat": "error rate"
+                  }
+                ]
+              }
+            ]
+          }

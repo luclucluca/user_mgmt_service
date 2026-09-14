@@ -63,7 +63,7 @@ backend:
     limits:
       cpu: 1000m
       memory: 1Gi
-  # Spring Boot bringt keinen Actuator mit, daher TCP-Probes.
+  # TCP-Probes bewusst unveraendert - Actuator ist nur fuer /actuator/prometheus da, nicht als Health-Check-Quelle angebunden.
   probes:
     startup:
       periodSeconds: 5
@@ -213,3 +213,16 @@ resourceQuota:
 networkPolicy:
   enabled: true
   allowFromNamespace: ingress-nginx
+# ---------------------------------------------------------------------------
+# Observability (Aufgabe 1): ServiceMonitor + PrometheusRule fuer das Backend.
+# Setzt einen laufenden kube-prometheus-stack voraus (k8s/monitoring-values.yaml).
+# ---------------------------------------------------------------------------
+monitoring:
+  enabled: true
+  serviceMonitor:
+    interval: 30s
+  # Muss mit spring.application.name (application.properties) uebereinstimmen.
+  metricsApplicationTag: user-mgmt-backend
+  alerts:
+    errorRateThreshold: "0.05"
+    errorRateFor: 2m

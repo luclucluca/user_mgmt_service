@@ -109,6 +109,17 @@ helm upgrade --install metrics-server metrics-server/metrics-server \
 ok "metrics-server installiert (kubectl top nodes zum Pruefen)"
 
 # ---------------------------------------------------------------------------
+info "kube-prometheus-stack installieren (Observability)"
+# ---------------------------------------------------------------------------
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
+helm repo update prometheus-community >/dev/null
+helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+  --namespace monitoring --create-namespace \
+  -f "${K8S_DIR}/monitoring-values.yaml" \
+  --wait --timeout 10m >/dev/null
+ok "kube-prometheus-stack installiert"
+
+# ---------------------------------------------------------------------------
 info "ArgoCD installieren"
 # ---------------------------------------------------------------------------
 # Eigener Namespace, getrennt von der Applikation; TLS wird am Ingress terminiert (server.insecure).
@@ -216,6 +227,9 @@ kubectl get application -n argocd
 ARGOCD_ADMIN_PW=$(kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true)
 
+GRAFANA_ADMIN_PW=$(kubectl -n monitoring get secret kube-prometheus-stack-grafana \
+  -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || true)
+
 cat <<EOF
 
 ────────────────────────────────────────────────────────────────────
@@ -225,6 +239,9 @@ Staging-Host: ${STAGING_HOST} (Namespace ${STAGING_NAMESPACE})
 
 ArgoCD Dashboard: https://${ARGOCD_HOST}
   Login: admin / ${ARGOCD_ADMIN_PW:-<kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d>}
+
+Grafana (kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80):
+  Login: admin / ${GRAFANA_ADMIN_PW:-<kubectl -n monitoring get secret kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | base64 -d>}
 
 Backend und Frontend stehen auf ErrImagePull, solange die Images
 fehlen. Naechste Schritte:

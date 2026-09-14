@@ -1,0 +1,46 @@
+{{- if .Values.monitoring.enabled }}
+{{- $name := include "user-mgmt.componentName" (dict "ctx" $ "component" "backend") -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "user-mgmt.componentLabels" (dict "ctx" $ "component" "backend") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "user-mgmt.componentSelectorLabels" (dict "ctx" $ "component" "backend") | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: {{ .Values.monitoring.serviceMonitor.interval }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ $name }}-alerts
+  labels:
+    {{- include "user-mgmt.componentLabels" (dict "ctx" $ "component" "backend") | nindent 4 }}
+spec:
+  groups:
+    - name: user-mgmt-backend.rules
+      rules:
+        - alert: UserMgmtHighErrorRate
+          # "namespace" trennt Prod/Staging (gleicher application-Tag in beiden Releases), "application" filtert auf dieses Backend.
+          expr: >-
+            sum(rate(http_server_requests_seconds_count{namespace="{{ .Release.Namespace }}",application="{{ .Values.monitoring.metricsApplicationTag }}",outcome="SERVER_ERROR"}[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count{namespace="{{ .Release.Namespace }}",application="{{ .Values.monitoring.metricsApplicationTag }}"}[5m]))
+            > {{ .Values.monitoring.alerts.errorRateThreshold }}
+          for: {{ .Values.monitoring.alerts.errorRateFor }}
+          labels:
+            severity: critical
+          annotations:
+            summary: user_mgmt_service - hohe Fehlerrate
+            description: >-
+              Mehr als {{ .Values.monitoring.alerts.errorRateThreshold }} der Requests an user_mgmt_service
+              schlagen seit {{ .Values.monitoring.alerts.errorRateFor }} mit HTTP 5xx fehl.
+{{- end }}
