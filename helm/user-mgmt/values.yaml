@@ -53,7 +53,7 @@ backend:
     maxUnavailable: 1
   image:
     name: user_mgmt_service-backend
-    tag: 4855ea7036c9dd17f1cadb0e44e366fe89a83928
+    tag: 674d52e89fd8e8cee43ab30d065929d5dcf5b24f
   service:
     port: 8080
   # Gemessen (kubectl top): ~430Mi unter Last, JVM dimensioniert Heap am Limit, nicht am Request.
@@ -102,7 +102,7 @@ frontend:
     maxUnavailable: 1
   image:
     name: user_mgmt_service-frontend
-    tag: 4855ea7036c9dd17f1cadb0e44e366fe89a83928
+    tag: 674d52e89fd8e8cee43ab30d065929d5dcf5b24f
   service:
     port: 3000
   # Gemessen: ~127Mi im Leerlauf.
