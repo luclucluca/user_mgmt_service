@@ -11,3 +11,9 @@ resourceQuota:
   requestsMemory: 4Gi
   limitsCpu: "6"
   limitsMemory: 8Gi
+
+# Aufgabe 4: DigitalOcean Managed PostgreSQL statt selbst betriebenem StatefulSet.
+# SPRING_DATASOURCE_URL/USERNAME/PASSWORD kommen dafuer aus dem Secret (von
+# setup-cluster.sh aus Terraform-Outputs befuellt), nicht aus dieser Datei.
+postgres:
+  enabled: false

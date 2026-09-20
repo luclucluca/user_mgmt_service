@@ -122,9 +122,11 @@ frontend:
     liveness:
       periodSeconds: 20
 # ---------------------------------------------------------------------------
-# PostgreSQL
+# PostgreSQL (Aufgabe 4: in Prod durch DigitalOcean Managed PostgreSQL ersetzt,
+# siehe terraform/database.tf - dort ist postgres.enabled=false in values-prod.yaml).
 # ---------------------------------------------------------------------------
 postgres:
+  enabled: true
   image:
     registry: docker.io
     repository: library

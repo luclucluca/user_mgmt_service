@@ -24,6 +24,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 K8S_DIR="${REPO_ROOT}/k8s"
 ENV_FILE="${REPO_ROOT}/.env"
 WORKFLOW="${REPO_ROOT}/.github/workflows/deploy.yml"
+TF_DIR="${REPO_ROOT}/terraform"
 
 info()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 warn()  { printf '\033[1;33m!   %s\033[0m\n' "$*"; }
@@ -187,11 +188,52 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+info "Terraform anwenden (Managed PostgreSQL fuer Prod, Aufgabe 4)"
+# ---------------------------------------------------------------------------
+# Cluster-ID und -Version aendern sich bei jedem Neuaufbau. Statt den Import Block
+# stillschweigend veralten zu lassen (State zeigt sonst auf einen geloeschten Cluster,
+# siehe DECISION zu Aufgabe 4), wird er hier immer frisch aus dem laufenden Cluster gezogen.
+[ -f "${TF_DIR}/terraform.tfvars" ] || { echo "FEHLER: ${TF_DIR}/terraform.tfvars nicht gefunden (siehe terraform.tfvars.example)"; exit 1; }
+CLUSTER_ID=$(doctl kubernetes cluster get "${CLUSTER_NAME}" --format ID --no-header)
+CLUSTER_VERSION=$(doctl kubernetes cluster get "${CLUSTER_NAME}" --format Version --no-header)
+sed -E -i.bak "s/id = \"[0-9a-f-]{36}\"/id = \"${CLUSTER_ID}\"/" "${TF_DIR}/import.tf"
+rm -f "${TF_DIR}/import.tf.bak"
+terraform -chdir="${TF_DIR}" state rm digitalocean_kubernetes_cluster.this >/dev/null 2>&1 || true
+terraform -chdir="${TF_DIR}" init -input=false >/dev/null
+terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var="kubernetes_version=${CLUSTER_VERSION}" >/dev/null
+ok "Terraform angewendet - Cluster importiert, Managed PostgreSQL bereit"
+
+DB_HOST=$(terraform -chdir="${TF_DIR}" output -raw postgres_host)
+DB_PORT=$(terraform -chdir="${TF_DIR}" output -raw postgres_port)
+DB_NAME=$(terraform -chdir="${TF_DIR}" output -raw postgres_db_name)
+DB_USER=$(terraform -chdir="${TF_DIR}" output -raw postgres_app_user)
+DB_PASSWORD=$(terraform -chdir="${TF_DIR}" output -raw postgres_app_password)
+PROD_DATASOURCE_URL="jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=require"
+
+# ---------------------------------------------------------------------------
 info "Applikationen via ArgoCD ausrollen (Prod + Staging)"
 # ---------------------------------------------------------------------------
 # Secret entsteht hier statt im Chart (secrets.create=false), damit es nicht in Git landet.
 [ -f "${ENV_FILE}" ] || { echo "FEHLER: ${ENV_FILE} nicht gefunden"; exit 1; }
 env_value() { grep -E "^${1}=" "${ENV_FILE}" | cut -d= -f2-; }
+
+kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+# Prod bezieht die Datenbank ueber die Managed PostgreSQL (Terraform) statt ueber den
+# Postgres-StatefulSet im Cluster - deshalb SPRING_DATASOURCE_URL zusaetzlich im Secret,
+# es ueberschreibt den ConfigMap-Wert (envFrom: ConfigMap vor Secret, siehe backend.yaml).
+kubectl create secret generic user-mgmt-secret -n "${NAMESPACE}" \
+  --from-literal=SPRING_DATASOURCE_URL="${PROD_DATASOURCE_URL}" \
+  --from-literal=SPRING_DATASOURCE_USERNAME="${DB_USER}" \
+  --from-literal=SPRING_DATASOURCE_PASSWORD="${DB_PASSWORD}" \
+  --from-literal=JWT_SECRET="$(env_value JWT_SECRET)" \
+  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+kubectl apply -f "${K8S_DIR}/argocd-application-prod.yaml"
+for _ in $(seq 1 60); do
+  kubectl get deployment/user-mgmt-backend -n "${NAMESPACE}" >/dev/null 2>&1 && break
+  sleep 5
+done
+kubectl rollout status deployment/user-mgmt-backend -n "${NAMESPACE}" --timeout=300s
+ok "Prod (${NAMESPACE}) bereit (Managed PostgreSQL)"
 
 deploy_env() {
   local ns="$1" secret_name="$2" statefulset="$3" app_file="$4"
@@ -211,9 +253,6 @@ deploy_env() {
   done
   kubectl wait --for=condition=Ready "pod/${statefulset}-0" -n "${ns}" --timeout=300s
 }
-
-deploy_env "${NAMESPACE}" user-mgmt-secret user-mgmt-postgres argocd-application-prod.yaml
-ok "Prod (${NAMESPACE}) bereit"
 
 deploy_env "${STAGING_NAMESPACE}" user-mgmt-staging-secret user-mgmt-staging-postgres argocd-application-staging.yaml
 ok "Staging (${STAGING_NAMESPACE}) bereit"

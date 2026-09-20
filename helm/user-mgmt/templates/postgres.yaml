@@ -1,3 +1,4 @@
+{{- if .Values.postgres.enabled -}}
 {{- $name := include "user-mgmt.componentName" (dict "ctx" $ "component" "postgres") -}}
 apiVersion: v1
 kind: Service
@@ -86,3 +87,4 @@ spec:
           requests:
             storage: {{ .Values.postgres.persistence.size }}
   {{- end }}
+{{- end }}

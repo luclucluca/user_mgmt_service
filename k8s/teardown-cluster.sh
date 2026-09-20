@@ -6,10 +6,26 @@ set -euo pipefail
 CLUSTER_NAME="${CLUSTER_NAME:-k8s-vscmodul}"
 # Beide Umgebungen: sonst bleibt z.B. das Staging-PVC als kostenpflichtiges Volume zurueck.
 NAMESPACES=("user-mgmt" "user-mgmt-staging")
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TF_DIR="${REPO_ROOT}/terraform"
 
 info() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m✓   %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m!   %s\033[0m\n' "$*"; }
+
+# Managed PostgreSQL (Aufgabe 4) haengt nicht am Cluster - ohne diesen Schritt laeuft
+# die Kostenberechnung weiter, obwohl der Cluster laengst weg ist.
+if [ -f "${TF_DIR}/terraform.tfvars" ] && terraform -chdir="${TF_DIR}" state list 2>/dev/null | grep -q digitalocean_database; then
+  info "Managed PostgreSQL abbauen (Terraform)"
+  terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
+    -target=digitalocean_database_firewall.postgres \
+    -target=digitalocean_database_user.app \
+    -target=digitalocean_database_db.user_mgmt \
+    -target=digitalocean_database_cluster.postgres
+  ok "Managed PostgreSQL geloescht"
+else
+  warn "Kein Terraform-State fuer die Managed PostgreSQL gefunden - manuell pruefen: doctl databases list"
+fi
 
 if ! doctl kubernetes cluster get "${CLUSTER_NAME}" >/dev/null 2>&1; then
   warn "Cluster '${CLUSTER_NAME}' existiert nicht – springe zur Restpruefung"
@@ -35,6 +51,7 @@ info "Restpruefung auf verwaiste, kostenpflichtige Ressourcen"
 echo "--- Cluster ---";       doctl kubernetes cluster list
 echo "--- Load Balancer ---"; doctl compute load-balancer list --format ID,Name,IP,Status
 echo "--- Volumes ---";       doctl compute volume list --format ID,Name,Size,Region
+echo "--- Databases ---";     doctl databases list --format ID,Name,Status
 
 cat <<'EOF'
 

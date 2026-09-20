@@ -9,8 +9,9 @@ data:
   POSTGRES_DB: {{ .Values.config.postgresDb | quote }}
 
   # --- Spring Boot ---
-  # Der Hostname kommt aus dem Helper, nicht hartcodiert: das Backend erreicht
-  # die Datenbank ausschliesslich ueber den Kubernetes Service.
+  # Default fuer den selbst betriebenen Postgres (postgres.enabled=true, z.B. Staging).
+  # Bei postgres.enabled=false (Prod, Aufgabe 4) ueberschreibt das Secret diesen Wert mit
+  # der Managed-PostgreSQL-URL (envFrom: ConfigMap vor Secret, siehe backend.yaml).
   SPRING_DATASOURCE_URL: {{ include "user-mgmt.datasourceUrl" . | quote }}
   SPRING_JPA_HIBERNATE_DDL_AUTO: {{ .Values.config.ddlAuto | quote }}
 
