@@ -1,0 +1,42 @@
+# Werte fuer Kyverno (Helm Chart kyverno/kyverno), angewendet von setup-cluster.sh im
+# Namespace "policy". Ressourcen bewusst knapp (2-Node-Wegwerf-Cluster, siehe DECISION-014
+# Nachtrag zu Grafana-OOM) - vier Controller (admission/background/cleanup/reports) statt einem.
+admissionController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+backgroundController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 30m
+      memory: 96Mi
+    limits:
+      cpu: 150m
+      memory: 192Mi
+
+cleanupController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+reportsController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 30m
+      memory: 96Mi
+    limits:
+      cpu: 150m
+      memory: 192Mi

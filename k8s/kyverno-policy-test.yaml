@@ -1,0 +1,23 @@
+# Absichtlich ungueltiges Manifest zum Nachweis, dass Kyverno Policy Enforcement greift
+# (Aufgabe 5). Verstoesst gegen "restrict-image-registries" (fremdes Image) UND
+# "require-resource-requests-limits" (keine resources gesetzt).
+# Anwenden: kubectl apply -f k8s/kyverno-policy-test.yaml -n user-mgmt
+# Erwartetes Ergebnis: kubectl lehnt mit "admission webhook ... denied the request" ab,
+# es entsteht kein Deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kyverno-policy-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kyverno-policy-test
+  template:
+    metadata:
+      labels:
+        app: kyverno-policy-test
+    spec:
+      containers:
+        - name: not-allowed
+          image: docker.io/library/nginx:latest

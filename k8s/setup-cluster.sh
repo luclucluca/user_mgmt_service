@@ -122,6 +122,18 @@ kubectl apply -f "${K8S_DIR}/grafana-dashboard-user-mgmt-backend.yaml" >/dev/nul
 ok "kube-prometheus-stack installiert"
 
 # ---------------------------------------------------------------------------
+info "Kyverno installieren (Policy as Code, Aufgabe 5)"
+# ---------------------------------------------------------------------------
+helm repo add kyverno https://kyverno.github.io/kyverno/ >/dev/null 2>&1 || true
+helm repo update kyverno >/dev/null
+helm upgrade --install kyverno kyverno/kyverno \
+  --namespace policy --create-namespace \
+  -f "${K8S_DIR}/kyverno-values.yaml" \
+  --wait --timeout 5m >/dev/null
+kubectl apply -f "${K8S_DIR}/kyverno-policies.yaml" >/dev/null
+ok "Kyverno installiert, ClusterPolicies angewendet"
+
+# ---------------------------------------------------------------------------
 info "ArgoCD installieren"
 # ---------------------------------------------------------------------------
 # Eigener Namespace, getrennt von der Applikation; TLS wird am Ingress terminiert (server.insecure).

@@ -1,0 +1,115 @@
+# ClusterPolicies fuer Kyverno (Aufgabe 5). Anwenden: kubectl apply -f k8s/kyverno-policies.yaml
+# (macht setup-cluster.sh automatisch). Scope bewusst auf Deployment/StatefulSet in
+# user-mgmt/user-mgmt-staging begrenzt statt cluster-/Pod-weit: cert-manager legt fuer die
+# ACME-HTTP01-Challenge einen nackten Pod (kein Deployment) mit fremdem Image
+# (quay.io/jetstack/cert-manager-acmesolver) direkt in diesen Namespaces an - eine Pod- oder
+# clusterweite Policy wuerde dessen TLS-Erneuerung blockieren.
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-containers
+  annotations:
+    policies.kyverno.io/title: Disallow Privileged Containers
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Privileged Container koennen auf alle Geraete des Hosts zugreifen und hebeln
+      quasi alle Namespace-Isolation aus.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: privileged-containers
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+              namespaces:
+                - user-mgmt
+                - user-mgmt-staging
+      validate:
+        message: "Privilegierte Container sind nicht erlaubt."
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - =(securityContext):
+                      =(privileged): "false"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-requests-limits
+  annotations:
+    policies.kyverno.io/title: Require Resource Requests and Limits
+    policies.kyverno.io/category: Betrieb
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Ohne Requests/Limits kann ein einzelner Container den ganzen Node beanspruchen
+      oder wird vom Scheduler falsch eingeplant.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-resources
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+              namespaces:
+                - user-mgmt
+                - user-mgmt-staging
+      validate:
+        message: "Jeder Container braucht CPU- und Memory-Requests sowie -Limits."
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - resources:
+                      requests:
+                        memory: "?*"
+                        cpu: "?*"
+                      limits:
+                        memory: "?*"
+                        cpu: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict Image Registries
+    policies.kyverno.io/category: Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Nur Images aus der eigenen Registry (ghcr.io/luclucluca) oder dem offiziellen
+      Postgres-Image duerfen in den App-Namespaces laufen.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-registries
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+              namespaces:
+                - user-mgmt
+                - user-mgmt-staging
+      validate:
+        message: "Nur Images aus ghcr.io/luclucluca/* oder docker.io/library/postgres:* sind erlaubt."
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - image: "ghcr.io/luclucluca/* | docker.io/library/postgres:*"
