@@ -1,4 +1,4 @@
-# Managed MySQL fuer module_service (Aufgabe 6) - analog zu database.tf (PostgreSQL, Aufgabe 4).
+# Managed MySQL fuer module_service (DECISION-021), analog zu database.tf.
 resource "digitalocean_database_cluster" "mysql" {
   name       = "${var.cluster_name}-mysql"
   engine     = "mysql"

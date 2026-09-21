@@ -1,6 +1,5 @@
-# Verbindungsdaten fuer k8s/setup-cluster.sh, das daraus das Kubernetes Secret anlegt.
-# private_host statt host: DOKS und die Managed Database liegen im selben VPC,
-# damit bleibt die Verbindung intern und braucht keinen oeffentlichen Endpunkt.
+# Fuer setup-cluster.sh, das daraus das Kubernetes Secret anlegt. private_host
+# statt host: DOKS und DB liegen im selben VPC, kein oeffentlicher Endpunkt noetig.
 output "postgres_host" {
   value = digitalocean_database_cluster.postgres.private_host
 }
@@ -22,9 +21,7 @@ output "postgres_app_password" {
   sensitive = true
 }
 
-# Nur fuer die einmalige GRANT-Vergabe in setup-cluster.sh (PostgreSQL 15+ entzieht
-# neuen Nicht-Owner-Rollen standardmaessig CREATE auf das Schema "public") - wird nirgends
-# als Kubernetes Secret persistiert.
+# Nur fuer den einmaligen Schema-GRANT in setup-cluster.sh, nie als Secret persistiert.
 output "postgres_admin_user" {
   value = digitalocean_database_cluster.postgres.user
 }

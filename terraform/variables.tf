@@ -17,7 +17,7 @@ variable "region" {
 }
 
 variable "kubernetes_version" {
-  description = "DOKS-Version. Explizit gepinnt statt 'latest' (wie in setup-cluster.sh bei der Erstellung), damit Terraform keine ungewollten Upgrades vorschlaegt. Aenderungen an diesem Wert ersetzen den Cluster (ForceNew) - vor jedem Import/Apply mit 'doctl kubernetes cluster get' gegenpruefen."
+  description = "DOKS-Version, gepinnt statt 'latest'. Aenderungen ersetzen den Cluster (ForceNew) - vorher mit 'doctl kubernetes cluster get' gegenpruefen."
   type        = string
   default     = "1.36.3-do.5"
 }
@@ -59,7 +59,7 @@ variable "postgres_db_name" {
 }
 
 variable "mysql_version" {
-  description = "Engine-Version der Managed MySQL Database (Aufgabe 6, module_service). DigitalOcean akzeptiert nur die volle Version (siehe 'doctl databases options versions --engine mysql'), anders als bei PostgreSQL reicht die Major-Version nicht."
+  description = "Engine-Version der Managed MySQL Database. Braucht die volle Version (nicht nur Major wie bei postgres_version)."
   type        = string
   default     = "8.4"
 }

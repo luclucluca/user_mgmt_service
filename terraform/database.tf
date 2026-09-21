@@ -1,5 +1,4 @@
-# Managed PostgreSQL fuer Prod (Aufgabe 4) - ersetzt den bisherigen Postgres-StatefulSet
-# im Cluster. Nur Prod, Staging bleibt selbst betrieben (siehe DECISION zu Aufgabe 4).
+# Managed PostgreSQL fuer Prod (DECISION-019). Staging bleibt selbst betrieben.
 resource "digitalocean_database_cluster" "postgres" {
   name       = "${var.cluster_name}-postgres"
   engine     = "pg"
@@ -14,13 +13,12 @@ resource "digitalocean_database_db" "user_mgmt" {
   name       = var.postgres_db_name
 }
 
-# Eigener, nicht-administrativer Benutzer statt des DB-Cluster-Admin-Accounts.
 resource "digitalocean_database_user" "app" {
   cluster_id = digitalocean_database_cluster.postgres.id
   name       = "user_mgmt_app"
 }
 
-# Ohne diese Regel lehnt die Managed Database jede Verbindung ab, auch aus demselben VPC.
+# Ohne diese Regel lehnt die DB jede Verbindung ab, auch aus demselben VPC.
 resource "digitalocean_database_firewall" "postgres" {
   cluster_id = digitalocean_database_cluster.postgres.id
 
