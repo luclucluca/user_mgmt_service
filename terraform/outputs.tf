@@ -21,3 +21,24 @@ output "postgres_app_password" {
   value     = digitalocean_database_user.app.password
   sensitive = true
 }
+
+output "mysql_host" {
+  value = digitalocean_database_cluster.mysql.private_host
+}
+
+output "mysql_port" {
+  value = digitalocean_database_cluster.mysql.port
+}
+
+output "mysql_db_name" {
+  value = digitalocean_database_db.module_service.name
+}
+
+output "mysql_app_user" {
+  value = digitalocean_database_user.module_service.name
+}
+
+output "mysql_app_password" {
+  value     = digitalocean_database_user.module_service.password
+  sensitive = true
+}

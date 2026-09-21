@@ -1,0 +1,14 @@
+apiVersion: v2
+name: module-service
+description: |
+  Module Service - FastAPI-Microservice zur Verwaltung von Unterrichtsmodulen
+  und deren Zuweisung an User, mit DigitalOcean Managed MySQL.
+type: application
+
+version: 0.1.0
+appVersion: "0.1.0"
+
+keywords:
+  - fastapi
+  - mysql
+  - microservice

@@ -57,3 +57,21 @@ variable "postgres_db_name" {
   type        = string
   default     = "user_mgmt"
 }
+
+variable "mysql_version" {
+  description = "Engine-Version der Managed MySQL Database (Aufgabe 6, module_service). DigitalOcean akzeptiert nur die volle Version (siehe 'doctl databases options versions --engine mysql'), anders als bei PostgreSQL reicht die Major-Version nicht."
+  type        = string
+  default     = "8.4"
+}
+
+variable "mysql_db_size" {
+  description = "Groesse der Managed MySQL Database. Kleinste Stufe fuer eine Modulaufgabe."
+  type        = string
+  default     = "db-s-1vcpu-1gb"
+}
+
+variable "mysql_db_name" {
+  description = "Name der logischen Datenbank innerhalb des MySQL-Clusters."
+  type        = string
+  default     = "module_service"
+}

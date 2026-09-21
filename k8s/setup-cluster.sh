@@ -222,6 +222,13 @@ DB_USER=$(terraform -chdir="${TF_DIR}" output -raw postgres_app_user)
 DB_PASSWORD=$(terraform -chdir="${TF_DIR}" output -raw postgres_app_password)
 PROD_DATASOURCE_URL="jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=require"
 
+MYSQL_HOST=$(terraform -chdir="${TF_DIR}" output -raw mysql_host)
+MYSQL_PORT=$(terraform -chdir="${TF_DIR}" output -raw mysql_port)
+MYSQL_DB=$(terraform -chdir="${TF_DIR}" output -raw mysql_db_name)
+MYSQL_USER=$(terraform -chdir="${TF_DIR}" output -raw mysql_app_user)
+MYSQL_PASSWORD=$(terraform -chdir="${TF_DIR}" output -raw mysql_app_password)
+MODULE_SERVICE_DATABASE_URL="mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DB}?charset=utf8mb4"
+
 # ---------------------------------------------------------------------------
 info "Applikationen via ArgoCD ausrollen (Prod + Staging)"
 # ---------------------------------------------------------------------------
@@ -246,6 +253,26 @@ for _ in $(seq 1 60); do
 done
 kubectl rollout status deployment/user-mgmt-backend -n "${NAMESPACE}" --timeout=300s
 ok "Prod (${NAMESPACE}) bereit (Managed PostgreSQL)"
+
+# ---------------------------------------------------------------------------
+info "module_service ausrollen (Aufgabe 6, Managed MySQL)"
+# ---------------------------------------------------------------------------
+# Laeuft im selben Namespace wie user-mgmt-backend, siehe helm/module-service/values.yaml.
+kubectl create secret generic module-service-secret -n "${NAMESPACE}" \
+  --from-literal=DATABASE_URL="${MODULE_SERVICE_DATABASE_URL}" \
+  --from-literal=MYSQL_HOST="${MYSQL_HOST}" \
+  --from-literal=MYSQL_PORT="${MYSQL_PORT}" \
+  --from-literal=MYSQL_USER="${MYSQL_USER}" \
+  --from-literal=MYSQL_PASSWORD="${MYSQL_PASSWORD}" \
+  --from-literal=MYSQL_DB="${MYSQL_DB}" \
+  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+kubectl apply -f "${K8S_DIR}/argocd-application-module-service.yaml"
+for _ in $(seq 1 60); do
+  kubectl get deployment/module-service -n "${NAMESPACE}" >/dev/null 2>&1 && break
+  sleep 5
+done
+kubectl rollout status deployment/module-service -n "${NAMESPACE}" --timeout=300s
+ok "module_service bereit"
 
 deploy_env() {
   local ns="$1" secret_name="$2" statefulset="$3" app_file="$4"

@@ -168,6 +168,9 @@ config:
   ddlAuto: update
   jwtIssuer: Spring
   jwtExpirationMillis: "86400000"
+  # Laeuft im selben Namespace wie das Backend (Aufgabe 6, siehe helm/module-service), daher
+  # der kurze, unqualifizierte Servicename statt einer vollen FQDN.
+  moduleServiceBaseUrl: http://module-service:8080
 # ---------------------------------------------------------------------------
 # Sensitive Konfiguration -> Secret
 # ---------------------------------------------------------------------------

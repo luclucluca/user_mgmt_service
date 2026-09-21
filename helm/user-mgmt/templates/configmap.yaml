@@ -18,3 +18,6 @@ data:
   # --- JWT (nicht sensitiv) ---
   JWT_ISSUER: {{ .Values.config.jwtIssuer | quote }}
   JWT_EXPIRATION_MILLIS: {{ .Values.config.jwtExpirationMillis | quote }}
+
+  # --- module_service (Aufgabe 6) ---
+  MODULE_SERVICE_BASE_URL: {{ .Values.config.moduleServiceBaseUrl | quote }}

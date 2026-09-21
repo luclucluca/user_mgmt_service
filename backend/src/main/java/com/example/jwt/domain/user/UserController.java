@@ -1,5 +1,6 @@
 package com.example.jwt.domain.user;
 
+import com.example.jwt.domain.module.ModuleAssignmentService;
 import com.example.jwt.domain.user.dto.UserDTO;
 import com.example.jwt.domain.user.dto.UserMapper;
 import com.example.jwt.domain.user.dto.UserRegisterDTO;
@@ -27,10 +28,13 @@ public class UserController {
 
   private final UserService userService;
   private final UserMapper userMapper;
+  private final ModuleAssignmentService moduleAssignmentService;
 
-  public UserController(UserService userService, UserMapper userMapper) {
+  public UserController(UserService userService, UserMapper userMapper,
+      ModuleAssignmentService moduleAssignmentService) {
     this.userService = userService;
     this.userMapper = userMapper;
+    this.moduleAssignmentService = moduleAssignmentService;
   }
 
   @GetMapping("/me")
@@ -68,6 +72,13 @@ public class UserController {
   @PreAuthorize("hasAuthority('USER_DELETE')")
   public ResponseEntity<Void> deleteById(@PathVariable UUID id) {
     userService.deleteById(id);
+    return ResponseEntity.noContent().build();
+  }
+
+  @PutMapping("/{userId}/modules/{moduleId}")
+  public ResponseEntity<Void> assignModule(@PathVariable UUID userId, @PathVariable UUID moduleId) {
+    userService.findById(userId);
+    moduleAssignmentService.assign(userId, moduleId);
     return ResponseEntity.noContent().build();
   }
 }

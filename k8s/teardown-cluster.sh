@@ -13,18 +13,22 @@ info() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m✓   %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m!   %s\033[0m\n' "$*"; }
 
-# Managed PostgreSQL (Aufgabe 4) haengt nicht am Cluster - ohne diesen Schritt laeuft
-# die Kostenberechnung weiter, obwohl der Cluster laengst weg ist.
+# Managed PostgreSQL (Aufgabe 4) und MySQL (Aufgabe 6) haengen nicht am Cluster - ohne
+# diesen Schritt laeuft die Kostenberechnung weiter, obwohl der Cluster laengst weg ist.
 if [ -f "${TF_DIR}/terraform.tfvars" ] && terraform -chdir="${TF_DIR}" state list 2>/dev/null | grep -q digitalocean_database; then
-  info "Managed PostgreSQL abbauen (Terraform)"
+  info "Managed Databases abbauen (Terraform)"
   terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
     -target=digitalocean_database_firewall.postgres \
     -target=digitalocean_database_user.app \
     -target=digitalocean_database_db.user_mgmt \
-    -target=digitalocean_database_cluster.postgres
-  ok "Managed PostgreSQL geloescht"
+    -target=digitalocean_database_cluster.postgres \
+    -target=digitalocean_database_firewall.mysql \
+    -target=digitalocean_database_user.module_service \
+    -target=digitalocean_database_db.module_service \
+    -target=digitalocean_database_cluster.mysql
+  ok "Managed Databases geloescht"
 else
-  warn "Kein Terraform-State fuer die Managed PostgreSQL gefunden - manuell pruefen: doctl databases list"
+  warn "Kein Terraform-State fuer die Managed Databases gefunden - manuell pruefen: doctl databases list"
 fi
 
 if ! doctl kubernetes cluster get "${CLUSTER_NAME}" >/dev/null 2>&1; then

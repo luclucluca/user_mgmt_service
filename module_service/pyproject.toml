@@ -9,6 +9,7 @@ description = "REST service for managing modules"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115,<1",
+    "prometheus-fastapi-instrumentator>=7.0,<8",
     "pydantic-settings>=2.8,<3",
     "pymysql[rsa]>=1.1,<2",
     "sqlalchemy>=2.0,<3",

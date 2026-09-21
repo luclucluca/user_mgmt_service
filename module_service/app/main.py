@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api import module_router, user_module_router
 from app.config import get_settings
@@ -18,6 +19,9 @@ app = FastAPI(
 )
 app.include_router(module_router)
 app.include_router(user_module_router)
+
+# Request Rate/Response Time/Error Rate fuer Prometheus (Aufgabe 6 ServiceMonitor).
+Instrumentator().instrument(app).expose(app)
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:

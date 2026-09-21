@@ -1,0 +1,58 @@
+# schema.sql ist idempotent (CREATE TABLE IF NOT EXISTS / INSERT IGNORE) und laeuft
+# deshalb bei jedem Helm-Sync erneut - kein Migrationstool im module_service vorhanden.
+# Quelle: module_service/schema.sql (Kopie hier, da Helm nur auf Dateien innerhalb des
+# Chart-Verzeichnisses zugreifen kann).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: module-service-schema
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "module-service.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+data:
+  schema.sql: |
+{{ .Files.Get "files/schema.sql" | indent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: module-service-schema-{{ .Release.Revision }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "module-service.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: apply-schema
+          image: mysql:8
+          command:
+            - sh
+            - -c
+            - mysql --ssl-mode=REQUIRED -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DB" < /schema/schema.sql
+          envFrom:
+            - secretRef:
+                name: {{ include "module-service.secretName" . }}
+          volumeMounts:
+            - name: schema
+              mountPath: /schema
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      volumes:
+        - name: schema
+          configMap:
+            name: module-service-schema

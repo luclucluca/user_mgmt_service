@@ -1,0 +1,51 @@
+# Laeuft bewusst im selben Namespace wie user-mgmt (siehe DECISION zu Aufgabe 6): keine
+# neue NetworkPolicy noetig (die bestehende erlaubt bereits allen Traffic innerhalb des
+# Namespace), die bestehenden Kyverno-ClusterPolicies (Aufgabe 5) greifen automatisch mit.
+namespace: user-mgmt
+
+replicaCount: 1
+
+image:
+  registry: ghcr.io
+  repository: luclucluca
+  name: user_mgmt_service-module-service
+  tag: latest
+  pullPolicy: Always
+
+service:
+  port: 8080
+
+# Vertikale Skalierung (Aufgabe 6): FastAPI/uvicorn ist leichtgewichtig, aber ohne Limits
+# koennte ein einzelner Worker unter Last den ganzen Node beanspruchen.
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
+
+probes:
+  startup:
+    periodSeconds: 3
+    failureThreshold: 20
+  readiness:
+    periodSeconds: 10
+  liveness:
+    periodSeconds: 20
+
+# Nicht sensitive Konfiguration -> ConfigMap
+config:
+  logLevel: INFO
+  mysqlSslDisabled: "true"
+
+# Sensitive Konfiguration -> Secret. Wird wie bei user-mgmt nicht vom Chart erzeugt
+# (secrets.create=false), sondern von k8s/setup-cluster.sh aus Terraform-Outputs angelegt.
+secrets:
+  create: false
+  existingSecret: ""
+  databaseUrl: "mysql+pymysql://CHANGEME:CHANGEME@CHANGEME:25060/module_service?charset=utf8mb4"
+
+serviceMonitor:
+  enabled: true
+  interval: 30s

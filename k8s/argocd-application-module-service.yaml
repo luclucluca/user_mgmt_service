@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: module-service
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/luclucluca/user_mgmt_service.git
+    targetRevision: main
+    path: helm/module-service
+    helm:
+      valueFiles:
+        - values.yaml
+
+  destination:
+    server: https://kubernetes.default.svc
+    # Bewusst derselbe Namespace wie user-mgmt (Aufgabe 6): keine neue NetworkPolicy noetig,
+    # bestehende Kyverno-ClusterPolicies (Aufgabe 5) greifen automatisch mit.
+    namespace: user-mgmt
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
