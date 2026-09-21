@@ -8,7 +8,12 @@ version = "0.1.0"
 description = "REST service for managing modules"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.115,<1",
+    # Enger gepinnt als vorher (<1): neuere FastAPI-Versionen aendern die interne
+    # Routing-Struktur (_IncludedRouter statt flacher APIRoute-Liste), womit
+    # prometheus-fastapi-instrumentator mit AttributeError abstuerzt (jeder Request
+    # ausser /docs). <0.116 bleibt auf der Struktur, gegen die die Instrumentator-
+    # Version getestet ist.
+    "fastapi>=0.115,<0.116",
     "prometheus-fastapi-instrumentator>=7.0,<8",
     "pydantic-settings>=2.8,<3",
     "pymysql[rsa]>=1.1,<2",

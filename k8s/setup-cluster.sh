@@ -222,6 +222,50 @@ DB_USER=$(terraform -chdir="${TF_DIR}" output -raw postgres_app_user)
 DB_PASSWORD=$(terraform -chdir="${TF_DIR}" output -raw postgres_app_password)
 PROD_DATASOURCE_URL="jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=require"
 
+# ---------------------------------------------------------------------------
+info "Schema-Rechte auf Managed PostgreSQL vergeben"
+# ---------------------------------------------------------------------------
+# PostgreSQL 15+ entzieht neu erzeugten Nicht-Owner-Rollen (hier: der App-User)
+# standardmaessig CREATE/USAGE auf das Schema "public" - ohne diesen Schritt
+# scheitert Hibernates DDL beim ersten Start mit "permission denied for schema
+# public" und jeder DB-Zugriff wirft eine unbehandelte Exception (siehe DECISION
+# zu Aufgabe 6). Admin-Zugangsdaten werden nur ephemer verwendet, nie als
+# Kubernetes Secret angelegt.
+kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+ADMIN_USER=$(terraform -chdir="${TF_DIR}" output -raw postgres_admin_user)
+ADMIN_PASSWORD=$(terraform -chdir="${TF_DIR}" output -raw postgres_admin_password)
+GRANT_SQL_FILE=$(mktemp)
+cat > "${GRANT_SQL_FILE}" <<SQL
+GRANT ALL PRIVILEGES ON SCHEMA public TO "${DB_USER}";
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "${DB_USER}";
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "${DB_USER}";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "${DB_USER}";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "${DB_USER}";
+SQL
+kubectl create configmap postgres-grant-sql -n "${NAMESPACE}" --from-file=grant.sql="${GRANT_SQL_FILE}" \
+  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+rm -f "${GRANT_SQL_FILE}"
+kubectl delete pod postgres-grant-perms -n "${NAMESPACE}" --ignore-not-found --wait >/dev/null 2>&1
+kubectl run postgres-grant-perms -n "${NAMESPACE}" --image=postgres:16-alpine --restart=Never \
+  --overrides="{
+    \"spec\": {
+      \"containers\": [{
+        \"name\": \"postgres-grant-perms\",
+        \"image\": \"postgres:16-alpine\",
+        \"command\": [\"sh\", \"-c\", \"PGSSLMODE=require psql -h ${DB_HOST} -p ${DB_PORT} -U ${ADMIN_USER} -d ${DB_NAME} -f /sql/grant.sql\"],
+        \"env\": [{\"name\": \"PGPASSWORD\", \"value\": \"${ADMIN_PASSWORD}\"}],
+        \"volumeMounts\": [{\"name\": \"sql\", \"mountPath\": \"/sql\"}],
+        \"resources\": {\"requests\": {\"cpu\": \"20m\", \"memory\": \"32Mi\"}, \"limits\": {\"cpu\": \"50m\", \"memory\": \"64Mi\"}}
+      }],
+      \"volumes\": [{\"name\": \"sql\", \"configMap\": {\"name\": \"postgres-grant-sql\"}}]
+    }
+  }" >/dev/null
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/postgres-grant-perms -n "${NAMESPACE}" --timeout=60s
+kubectl logs postgres-grant-perms -n "${NAMESPACE}" 2>&1
+kubectl delete pod postgres-grant-perms -n "${NAMESPACE}" --ignore-not-found >/dev/null
+kubectl delete configmap postgres-grant-sql -n "${NAMESPACE}" --ignore-not-found >/dev/null
+ok "Schema-Rechte vergeben"
+
 MYSQL_HOST=$(terraform -chdir="${TF_DIR}" output -raw mysql_host)
 MYSQL_PORT=$(terraform -chdir="${TF_DIR}" output -raw mysql_port)
 MYSQL_DB=$(terraform -chdir="${TF_DIR}" output -raw mysql_db_name)
