@@ -20,13 +20,14 @@ public class ModuleClient {
 
   private final RestClient restClient;
 
-  public ModuleClient(RestClient.Builder builder,
-      @Value("${module-service.base-url}") String baseUrl,
+  public ModuleClient(@Value("${module-service.base-url}") String baseUrl,
       @Value("${module-service.timeout-millis}") int timeoutMillis) {
+    // RestClient.builder() statt injiziertem RestClient.Builder: die Autoconfiguration
+    // von Spring Boot 4.1.0-M3 registriert diesen Bean in diesem Milestone nicht zuverlaessig.
     SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
     requestFactory.setConnectTimeout(timeoutMillis);
     requestFactory.setReadTimeout(timeoutMillis);
-    this.restClient = builder.baseUrl(baseUrl).requestFactory(requestFactory).build();
+    this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
   }
 
   @CircuitBreaker(name = "moduleService", fallbackMethod = "isAvailableFallback")

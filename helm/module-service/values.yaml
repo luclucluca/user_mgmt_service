@@ -21,9 +21,11 @@ resources:
     cpu: 300m
     memory: 256Mi
 probes:
+  # 20x3s=60s war zu knapp - der Import der DB-/Krypto-Bibliotheken (sqlalchemy,
+  # pymysql[rsa]) kann bei Kaltstart/Node-Auslastung laenger dauern, 150s wie beim Backend.
   startup:
-    periodSeconds: 3
-    failureThreshold: 20
+    periodSeconds: 5
+    failureThreshold: 30
   readiness:
     periodSeconds: 10
   liveness:
