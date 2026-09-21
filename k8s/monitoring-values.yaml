@@ -47,7 +47,7 @@ alertmanager:
       - name: webhook-notifications
         webhook_configs:
           # Test-Endpunkt (webhook.site) fuer die Modulabgabe - keine sensiblen Daten im Alert-Payload.
-          - url: https://webhook.site/fe9c28ea-889b-4f5f-b923-134924a813f3
+          - url: https://webhook.site/d583e690-a186-4c7f-bf0c-61d144e60ed1
             send_resolved: true
 
 grafana:
