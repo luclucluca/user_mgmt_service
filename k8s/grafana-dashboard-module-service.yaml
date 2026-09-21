@@ -1,0 +1,77 @@
+# Grafana-Dashboard fuer module_service (Aufgabe 6). Gleiches Muster wie
+# grafana-dashboard-user-mgmt-backend.yaml (siehe DECISION-014, Nachtrag): eigenes
+# ConfigMap-Manifest mit dem Label "grafana_dashboard: 1", das der Sidecar erwartet -
+# ueber "grafana.dashboards" im Helm-Values wird das Label vom Chart nicht gesetzt.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-module-service
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  module-service.json: |
+    {
+      "title": "module_service",
+      "uid": "module-service",
+      "tags": ["module-service"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {},
+            "hide": 0
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Request Rate",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(rate(http_requests_total{service=\"module-service\"}[5m])) by (handler)",
+              "legendFormat": "{{handler}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Response Time (avg)",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+          "targets": [
+            {
+              "expr": "sum(rate(http_request_duration_seconds_sum{service=\"module-service\"}[5m])) / sum(rate(http_request_duration_seconds_count{service=\"module-service\"}[5m]))",
+              "legendFormat": "avg latency"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Error Rate (4xx/5xx)",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+          "targets": [
+            {
+              "expr": "sum(rate(http_requests_total{service=\"module-service\",status=~\"4xx|5xx\"}[5m])) / sum(rate(http_requests_total{service=\"module-service\"}[5m]))",
+              "legendFormat": "error rate"
+            }
+          ]
+        }
+      ]
+    }
