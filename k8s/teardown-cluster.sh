@@ -15,20 +15,30 @@ warn() { printf '\033[1;33m!   %s\033[0m\n' "$*"; }
 
 # Managed PostgreSQL (Aufgabe 4) und MySQL (Aufgabe 6) haengen nicht am Cluster - ohne
 # diesen Schritt laeuft die Kostenberechnung weiter, obwohl der Cluster laengst weg ist.
-if [ -f "${TF_DIR}/terraform.tfvars" ] && terraform -chdir="${TF_DIR}" state list 2>/dev/null | grep -q digitalocean_database; then
-  info "Managed Databases abbauen (Terraform)"
-  terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
-    -target=digitalocean_database_firewall.postgres \
-    -target=digitalocean_database_user.app \
-    -target=digitalocean_database_db.user_mgmt \
-    -target=digitalocean_database_cluster.postgres \
-    -target=digitalocean_database_firewall.mysql \
-    -target=digitalocean_database_user.module_service \
-    -target=digitalocean_database_db.module_service \
-    -target=digitalocean_database_cluster.mysql
-  ok "Managed Databases geloescht"
+# state list steht bewusst NICHT in der if-Bedingung und wird nicht nach /dev/null
+# umgeleitet: ein echter Fehler (z.B. Provider nicht initialisiert) soll das Skript per
+# set -e abbrechen, statt als "keine Databases im State" fehlinterpretiert zu werden -
+# genau das ist einmal passiert und hat zwei laufende DBs unbemerkt weiterlaufen lassen.
+if [ -f "${TF_DIR}/terraform.tfvars" ]; then
+  terraform -chdir="${TF_DIR}" init -input=false >/dev/null
+  TF_STATE=$(terraform -chdir="${TF_DIR}" state list)
+  if echo "${TF_STATE}" | grep -q digitalocean_database; then
+    info "Managed Databases abbauen (Terraform)"
+    terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
+      -target=digitalocean_database_firewall.postgres \
+      -target=digitalocean_database_user.app \
+      -target=digitalocean_database_db.user_mgmt \
+      -target=digitalocean_database_cluster.postgres \
+      -target=digitalocean_database_firewall.mysql \
+      -target=digitalocean_database_user.module_service \
+      -target=digitalocean_database_db.module_service \
+      -target=digitalocean_database_cluster.mysql
+    ok "Managed Databases geloescht"
+  else
+    warn "Keine Managed Databases im Terraform-State - nichts zu tun."
+  fi
 else
-  warn "Kein Terraform-State fuer die Managed Databases gefunden - manuell pruefen: doctl databases list"
+  warn "terraform.tfvars fehlt - Managed Databases manuell pruefen: doctl databases list"
 fi
 
 if ! doctl kubernetes cluster get "${CLUSTER_NAME}" >/dev/null 2>&1; then
