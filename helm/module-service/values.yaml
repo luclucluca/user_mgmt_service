@@ -7,7 +7,7 @@ image:
   registry: ghcr.io
   repository: luclucluca
   name: user_mgmt_service-module-service
-  tag: 931d2110ec19e2a95d4a5d8c3ec6c2c2f71e52b0
+  tag: 6a87f06a323e56d569e349c0c4844a64a5284422
   pullPolicy: Always
 service:
   port: 8080
